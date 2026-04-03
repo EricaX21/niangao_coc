@@ -1,0 +1,32 @@
+<view class="tab-bar">
+  <!-- 左列：招募大厅 -->
+  <view
+    class="tab-item"
+    data-index="0"
+    data-path="/pages/home/index"
+    bindtap="switchTab"
+  >
+    <view class="tab-icon-dot {{selected === 0 ? 'active' : ''}}"></view>
+    <text class="tab-text {{selected === 0 ? 'active' : ''}}">招募大厅</text>
+  </view>
+
+  <!-- 中间：凸起发布按钮 -->
+  <view class="tab-center" bindtap="goPublish">
+    <view class="center-btn-wrapper">
+      <view class="center-btn">
+        <text class="center-icon">+</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 右列：我的 -->
+  <view
+    class="tab-item"
+    data-index="1"
+    data-path="/pages/mine/index"
+    bindtap="switchTab"
+  >
+    <view class="tab-icon-dot {{selected === 1 ? 'active' : ''}}"></view>
+    <text class="tab-text {{selected === 1 ? 'active' : ''}}">我的</text>
+  </view>
+</view>
