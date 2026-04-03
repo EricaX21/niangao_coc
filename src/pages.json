@@ -1,0 +1,94 @@
+{
+  "easycom": {
+    "autoscan": true
+  },
+  "pages": [
+    {
+      "path": "pages/home/index",
+      "style": {
+        "navigationBarTitleText": "招募大厅"
+      }
+    },
+    {
+      "path": "pages/home/detail",
+      "style": {
+        "navigationBarTitleText": "招募详情"
+      }
+    },
+    {
+      "path": "pages/publish/form",
+      "style": {
+        "navigationBarTitleText": "快速发车"
+      }
+    },
+    {
+      "path": "pages/mine/index",
+      "style": {
+        "navigationBarTitleText": "我的"
+      }
+    },
+    {
+      "path": "pages/mine/created",
+      "style": {
+        "navigationBarTitleText": "我的创建"
+      }
+    },
+    {
+      "path": "pages/mine/detail",
+      "style": {
+        "navigationBarTitleText": "招募详情"
+      }
+    },
+    {
+      "path": "pages/mine/review",
+      "style": {
+        "navigationBarTitleText": "申请审核"
+      }
+    },
+    {
+      "path": "pages/mine/logs",
+      "style": {
+        "navigationBarTitleText": "我的足迹"
+      }
+    },
+    {
+      "path": "pages/profile/index",
+      "style": {
+        "navigationBarTitleText": "用户主页"
+      }
+    },
+    {
+      "path": "pages/profile/edit",
+      "style": {
+        "navigationBarTitleText": "编辑资料"
+      }
+    },
+    {
+      "path": "pages/profile/log_detail",
+      "style": {
+        "navigationBarTitleText": "演绎记录"
+      }
+    }
+  ],
+  "tabBar": {
+    "custom": true,
+    "color": "#999999",
+    "selectedColor": "#000000",
+    "backgroundColor": "#e6e6e6",
+    "borderStyle": "black",
+    "list": [
+      {
+        "pagePath": "pages/home/index",
+        "text": "招募大厅"
+      },
+      {
+        "pagePath": "pages/mine/index",
+        "text": "我的"
+      }
+    ]
+  },
+  "globalStyle": {
+    "navigationBarTitleText": "跑团组局",
+    "backgroundColor": "#F5F5F5"
+  }
+}
