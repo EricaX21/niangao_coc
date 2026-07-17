@@ -54,7 +54,10 @@ npm run dev:mp-weixin
 
 - `prd_v1_4.md` — 当前权威 PRD
 - `V1.4联调测试清单.md` — 双人真机联调用例
+- `MVP端到端走查清单.md` — 单人端到端走查用例
+- `页面逻辑梳理_v3.md` / `流程图合集_Mermaid.md` — 页面跳转与状态流转
 - `CLAUDE.md` / `AGENTS.md` — 开发约定与踩坑记录
+- `docs/` — 早期 PRD 归档
 
 ## 状态
 

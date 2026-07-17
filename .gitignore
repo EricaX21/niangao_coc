@@ -9,6 +9,16 @@ unpackage/
 .claude/
 .obsidian/
 
+# AI 协作过程文档（交接指令、调试往返记录），仅本地留存
+CC交接说明_*.md
+CC_BugFix_*.md
+CC_自查指令_*.md
+CC补充指令_*.md
+
+# 空的 Obsidian 文件
+未命名.base
+未命名.canvas
+
 # 编辑器 / 系统
 .vscode/
 .idea/
