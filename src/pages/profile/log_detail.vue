@@ -4,7 +4,8 @@
 import { ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { useUserStore } from '@/store/user'
-import { getLogById } from '@/api/log'
+import { getLogById, createLog, updateLog } from '@/api/log'
+import { safeNavigateBack } from '@/utils/navigation'
 
 const userStore = useUserStore()
 
@@ -24,17 +25,18 @@ const content = ref('')
 
 const presetTags = ['COC6th', 'COC7th', 'DND5E', 'FATE', 'Pathfinder', 'KP', 'PL', 'DM', '语音团', '文字团', '心得', '跑团记录']
 
-onLoad((options) => {
+onLoad(async (options) => {
   if (options.id) {
     logId.value = options.id
     isNew.value = false
     uni.setNavigationBarTitle({ title: '演绎记录' })
-    const log = getLogById(options.id)
+    // 直接查库（logs 集合所有人可读）
+    const log = await getLogById(options.id)
     if (log) {
-      title.value = log.title
-      moduleName.value = log.moduleName
-      selectedTags.value = [...log.tags]
-      content.value = log.content
+      title.value = log.title || ''
+      moduleName.value = log.moduleName || ''
+      selectedTags.value = Array.isArray(log.tags) ? [...log.tags] : []
+      content.value = log.content || ''
       // 判断是否本人的记录
       isSelf.value = userStore.isLoggedIn && userStore.uid === log.authorId
     }
@@ -69,7 +71,7 @@ const handleEdit = () => {
   isEditing.value = true
 }
 
-const handleSave = () => {
+const handleSave = async () => {
   if (!title.value.trim()) {
     uni.showToast({ title: '请输入标题', icon: 'none' })
     return
@@ -78,10 +80,28 @@ const handleSave = () => {
     uni.showToast({ title: '请输入正文', icon: 'none' })
     return
   }
-  // TODO: 接口接入后替换为真实保存逻辑
+
+  const payload = {
+    title: title.value.trim(),
+    moduleName: moduleName.value.trim(),
+    tags: [...selectedTags.value],
+    content: content.value.trim(),
+  }
+
+  uni.showLoading({ title: '保存中...', mask: true })
+  const result = isNew.value
+    ? await createLog(payload)
+    : await updateLog(logId.value, payload)
+  uni.hideLoading()
+
+  if (!result.success) {
+    uni.showToast({ title: result.message || '保存失败，请重试', icon: 'none' })
+    return
+  }
+
   uni.showToast({ title: '保存成功', icon: 'success' })
   if (isNew.value) {
-    setTimeout(() => uni.navigateBack(), 1500)
+    setTimeout(() => safeNavigateBack(), 1500)
   } else {
     // 编辑已有记录，保存后恢复浏览态
     isEditing.value = false
@@ -179,8 +199,10 @@ const handleSave = () => {
             class="content-textarea"
             placeholder="记录这次冒险的点点滴滴，可直接粘贴长文…"
             placeholder-class="field-placeholder"
+            maxlength="3000"
             auto-height
           />
+          <text class="content-counter">{{ content.length }}/3000</text>
         </view>
 
         <view class="bottom-padding" />
@@ -436,6 +458,14 @@ const handleSave = () => {
   color: #363636;
   line-height: 1.8;
   box-sizing: border-box;
+}
+
+.content-counter {
+  display: block;
+  text-align: right;
+  font-size: 22rpx;
+  color: #b2b2b2;
+  margin-top: 12rpx;
 }
 
 /* ===== 浏览态样式 ===== */

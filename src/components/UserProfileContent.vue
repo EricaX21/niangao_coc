@@ -91,9 +91,9 @@
         <view v-if="userLogs.length > 0" class="log-card-list">
           <view
             v-for="log in userLogs"
-            :key="log.id"
+            :key="log._id"
             class="log-card"
-            @tap="goLogDetail(log.id)"
+            @tap="goLogDetail(log._id)"
           >
             <text class="log-card-title">{{ log.title }}</text>
             <view class="log-card-tags">
@@ -128,9 +128,9 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, getCurrentInstance } from 'vue'
+import { ref, computed, watch, onMounted, getCurrentInstance } from 'vue'
 import { useUserStore } from '@/store/user'
-import { getLogsByUid } from '@/api/log'
+import { getLogsByAuthor } from '@/api/log'
 
 const userStore = useUserStore()
 
@@ -218,12 +218,29 @@ const archiveTabs = [
 
 const currentArchiveTab = ref('logs')
 
-// 当前用户的演绎记录
-const userLogs = computed(() => {
-  const uid = props.userInfo?.uid
-  if (!uid) return []
-  return getLogsByUid(uid)
-})
+// 当前用户的演绎记录（云函数异步加载）
+const userLogs = ref([])
+
+const loadUserLogs = async (uid) => {
+  if (!uid) {
+    userLogs.value = []
+    return
+  }
+  userLogs.value = await getLogsByAuthor(uid)
+}
+
+// userInfo.uid 就绪后自动拉取；档案馆打开时也能响应切换用户
+watch(() => props.userInfo?.uid, (uid) => {
+  loadUserLogs(uid)
+}, { immediate: true })
+
+// 暴露刷新方法，供父页面在 onShow 中调用（组件内 onShow 在小程序中不可靠）
+const refreshLogs = () => {
+  if (props.userInfo?.uid) {
+    loadUserLogs(props.userInfo.uid)
+  }
+}
+defineExpose({ refreshLogs })
 
 // 取正文前两行作为预览
 function getPreviewText(content) {
@@ -486,7 +503,8 @@ function goLogDetail(id) {
 
 /* 档案馆内容区（第四层）- min-height 通过 JS 动态计算，保证切换 tab 时 tab 栏维持吸顶 */
 .archive-content {
-  padding: 20rpx 32rpx;
+  /* 底部 padding 避让固定定位的自定义 TabBar（56px + 1rpx 边框 + 安全区），避免「+新增」按钮被遮挡点不到 */
+  padding: 20rpx 32rpx calc(120rpx + env(safe-area-inset-bottom));
   box-sizing: border-box;
 }
 

@@ -112,6 +112,8 @@
 import { ref, computed } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { useUserStore } from '@/store/user'
+import { updateUser } from '@/api/user'
+import { safeNavigateBack } from '@/utils/navigation'
 
 const userStore = useUserStore()
 
@@ -157,14 +159,16 @@ const toggleRole = (role) => {
 }
 
 // 进入页面时从 store 回填当前用户数据
+// 云数据库用 tags 数组表达身份，兼容老字段 isKP/isPL
 onLoad(() => {
   const info = userStore.userInfo || {}
+  const tags = Array.isArray(info.tags) ? info.tags : []
   form.value = {
     uid: info.uid || '',
     nickname: info.nickname || '',
     gender: info.gender || 'secret',
-    isKP: !!info.isKP,
-    isPL: !!info.isPL,
+    isKP: info.isKP ?? tags.includes('KP'),
+    isPL: info.isPL ?? tags.includes('PL'),
     signature: info.signature || info.bio || '',
     contactType: info.contact?.type || 'qq',
     contactValue: info.contact?.value || '',
@@ -175,7 +179,7 @@ const handleAvatarTap = () => {
   uni.showToast({ title: '头像上传即将开放', icon: 'none' })
 }
 
-const handleSave = () => {
+const handleSave = async () => {
   // 校验必填项
   if (!form.value.nickname.trim()) {
     uni.showToast({ title: '请输入昵称', icon: 'none' })
@@ -186,23 +190,38 @@ const handleSave = () => {
     return
   }
 
-  // 更新 store
-  userStore.updateUserInfo({
+  // 组装身份 tags 数组（云数据库字段）
+  const tags = []
+  if (form.value.isKP) tags.push('KP')
+  if (form.value.isPL) tags.push('PL')
+
+  const result = await updateUser({
     nickname: form.value.nickname.trim(),
     gender: form.value.gender,
-    isKP: form.value.isKP,
-    isPL: form.value.isPL,
+    tags,
     signature: form.value.signature.trim(),
-    bio: form.value.signature.trim(),
     contact: {
       type: form.value.contactType,
       value: form.value.contactValue.trim(),
     },
   })
 
+  if (!result.success) {
+    uni.showToast({ title: result.message || '保存失败', icon: 'none' })
+    return
+  }
+
+  // 同步本地 store，并附带 UI 依赖的旧字段 isKP/isPL/bio
+  userStore.setUser({
+    ...result.data,
+    isKP: form.value.isKP,
+    isPL: form.value.isPL,
+    bio: form.value.signature.trim(),
+  })
+
   uni.showToast({ title: '保存成功', icon: 'success' })
   setTimeout(() => {
-    uni.navigateBack()
+    safeNavigateBack()
   }, 800)
 }
 </script>
@@ -365,28 +384,25 @@ const handleSave = () => {
 }
 
 .contact-type-tag {
-  height: 56rpx;
-  padding: 0 28rpx;
+  padding: 8rpx 28rpx;
   border-radius: 28rpx;
-  border: 1rpx solid $border-color;
-  background-color: $white;
+  background-color: transparent;
   display: flex;
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
 
   &.active {
-    background-color: $bg-tag;
-    border-color: $bg-tag;
+    background-color: #434343;
   }
 }
 
 .contact-type-text {
-  font-size: 24rpx;
-  color: $text-secondary;
+  font-size: 26rpx;
+  color: #363636;
 
   .active & {
-    color: $white;
+    color: #ffffff;
   }
 }
 

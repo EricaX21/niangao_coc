@@ -1,18 +1,19 @@
 <!-- 我的（Tab2 壳页面）- onShow 检查登录，渲染与 profile/index 本人视角完全相同的内容 -->
 <template>
   <view class="page-container">
-    <UserProfileContent v-if="userStore.isLoggedIn" :userInfo="userInfo" :isSelf="true" />
+    <UserProfileContent v-if="userStore.isLoggedIn" ref="profileContentRef" :userInfo="userInfo" :isSelf="true" />
   </view>
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { useUserStore } from '@/store/user'
 import { checkLogin } from '@/utils/auth'
 import UserProfileContent from '@/components/UserProfileContent.vue'
 
 const userStore = useUserStore()
+const profileContentRef = ref(null)
 
 // 从 store 读取当前登录用户信息
 const userInfo = computed(() => userStore.userInfo || {})
@@ -29,6 +30,8 @@ onShow(async () => {
   if (typeof page?.getTabBar === 'function') {
     page.getTabBar()?.setData({ selected: 1 })
   }
+  // 从 P6 返回时刷新演绎记录列表
+  profileContentRef.value?.refreshLogs()
 })
 </script>
 

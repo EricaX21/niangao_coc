@@ -1,23 +1,40 @@
 <!-- 招募大厅首页 - 浅灰背景，展示招募卡片列表，支持搜索和标签筛选 -->
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { useGameStore } from '@/store/game'
-import { fuzzySearch } from '@/utils/search'
+import { getModuleList } from '@/api/module'
 import { formatGameTime } from '@/utils/formatTime'
-const gameStore = useGameStore()
 
-// 每次 onShow 时重新读取数据，确保发布人在别处发车后，切回大厅时已发车卡片及时消失
-// store 已是响应式数据源，computed 自动更新，此处保留 hook 供后端接口替换
-// 同时更新自定义 TabBar 选中态
+// 根据 plCount / recruitKP 拼接招募对象展示文本
+const formatRecruit = (item) => {
+  const parts = []
+  if (item.recruitKP) parts.push('1KP')
+  if (item.plCount) parts.push(`${item.plCount}PL`)
+  return parts.length > 0 ? parts.join(' ') : '待定'
+}
+
+// 从 rule / mode / playerCount 动态生成 tag 数组（云数据库无 tags 字段）
+const buildTags = (item) => {
+  const tags = []
+  if (item.mode) tags.push(item.mode)
+  if (item.rule) tags.push(item.rule)
+  if (item.playerCount) tags.push(`${item.playerCount}人`)
+  return tags
+}
+
+// 每次 onShow 时重新加载数据并更新 TabBar 选中态
 onShow(() => {
   const pages = getCurrentPages()
   const page = pages[pages.length - 1]
   if (typeof page?.getTabBar === 'function') {
     page.getTabBar()?.setData({ selected: 0 })
   }
+  loadModules()
 })
+
 const searchKeyword = ref('')
+const loading = ref(false)
+const list = ref([])
 
 // 筛选 tag 平铺排列，支持多选
 const filterTags = ['COC', 'DND', '其他', 'KP', 'PL', 'DM', '语音', '文字']
@@ -43,43 +60,97 @@ const toggleFilter = (tag) => {
 
 const hasActiveFilter = computed(() => selectedFilters.value.length > 0)
 
-// 单个 tag 的匹配函数
-const matchTag = (item, tag) => {
-  if (tag === 'COC') return item.rule && item.rule.startsWith('COC')
-  if (tag === 'DND') return item.rule && item.rule.startsWith('DND')
-  if (tag === '其他') return item.rule && !item.rule.startsWith('COC') && !item.rule.startsWith('DND')
-  if (tag === 'KP' || tag === 'DM') return item.recruitKP === true
-  if (tag === 'PL') return item.plCount > 0
-  if (tag === '语音') return item.mode === '语音'
-  if (tag === '文字') return item.mode === '文字'
-  return true
+// 将前端 tag 选择转换为云函数期望的 filters 参数
+const buildCloudFilters = () => {
+  const filters = {}
+  const sel = selectedFilters.value
+
+  // 规则体系维度
+  const ruleTags = FILTER_DIMS.rule.filter(t => sel.includes(t))
+  if (ruleTags.length > 0) {
+    // "其他"在云函数端不好用正则排除，这里只传 COC/DND，"其他"需特殊处理
+    // 云函数 rules 只支持 startsWith 正则匹配，"其他"无法通过 rules 实现
+    // 如果只选了"其他"，不传 rules（由前端本地过滤）
+    const cloudRules = ruleTags.filter(t => t !== '其他')
+    if (cloudRules.length > 0) {
+      filters.rules = cloudRules
+    }
+  }
+
+  // 招募对象维度
+  const targetTags = FILTER_DIMS.target.filter(t => sel.includes(t))
+  if (targetTags.length > 0) {
+    filters.targets = targetTags
+  }
+
+  // 跑团方式维度
+  const modeTags = FILTER_DIMS.mode.filter(t => sel.includes(t))
+  if (modeTags.length > 0) {
+    filters.modes = modeTags
+  }
+
+  return filters
 }
 
-// 同维度 OR，跨维度 AND
-const list = computed(() => {
-  let result = gameStore.recruitingModules
+// 是否需要前端本地过滤"其他"规则
+const needLocalOtherFilter = computed(() => {
+  const ruleTags = FILTER_DIMS.rule.filter(t => selectedFilters.value.includes(t))
+  // 只有选了"其他"且没有选 COC/DND 时，需要前端过滤
+  return ruleTags.includes('其他') && ruleTags.length === 1
+})
 
-  if (searchKeyword.value) {
-    result = fuzzySearch(searchKeyword.value, result, ['name', 'publisherName', 'tags', 'intro'])
+// 从云函数加载数据
+const loadModules = async () => {
+  loading.value = true
+  try {
+    const filters = buildCloudFilters()
+    const result = await getModuleList(filters)
+    let data = result.data || []
+
+    // 前端搜索过滤（云函数不支持模糊搜索）
+    if (searchKeyword.value) {
+      const kw = searchKeyword.value.toLowerCase()
+      data = data.filter(item =>
+        (item.title && item.title.toLowerCase().includes(kw)) ||
+        (item.creatorNickname && item.creatorNickname.toLowerCase().includes(kw)) ||
+        (item.rule && item.rule.toLowerCase().includes(kw)) ||
+        (item.mode && item.mode.toLowerCase().includes(kw)) ||
+        (item.intro && item.intro.toLowerCase().includes(kw))
+      )
+    }
+
+    // "其他"规则的前端过滤：排除 COC 和 DND 开头的
+    if (needLocalOtherFilter.value) {
+      data = data.filter(item =>
+        item.rule && !item.rule.startsWith('COC') && !item.rule.startsWith('DND')
+      )
+    }
+
+    list.value = data
+  } catch (error) {
+    console.error('loadModules error:', error)
+    list.value = []
+  } finally {
+    loading.value = false
   }
+}
 
-  if (selectedFilters.value.length > 0) {
-    result = result.filter(item => {
-      return Object.values(FILTER_DIMS).every(dimTags => {
-        const active = dimTags.filter(t => selectedFilters.value.includes(t))
-        // 该维度没有选中任何 tag → 不筛选（通过）
-        if (active.length === 0) return true
-        // 该维度内任一 tag 匹配即通过（OR）
-        return active.some(t => matchTag(item, t))
-      })
-    })
-  }
+// 筛选条件变化时重新加载
+watch(selectedFilters, () => {
+  loadModules()
+}, { deep: true })
 
-  return result
+// 搜索关键词变化时重新加载（防抖）
+let searchTimer = null
+watch(searchKeyword, () => {
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => {
+    loadModules()
+  }, 300)
 })
 
 const goDetail = (item) => {
-  uni.navigateTo({ url: `/pages/home/detail?id=${item.id}` })
+  uni.navigateTo({ url: `/pages/home/detail?id=${item._id}` })
 }
 </script>
 
@@ -125,14 +196,18 @@ const goDetail = (item) => {
     <!-- 招募卡片列表 -->
     <scroll-view scroll-y class="list-scroll">
       <view class="list-inner">
+        <!-- 加载中 -->
+        <view v-if="loading" class="empty-state">
+          <text class="empty-text">加载中...</text>
+        </view>
         <!-- 空状态 -->
-        <view v-if="list.length === 0" class="empty-state">
+        <view v-else-if="list.length === 0" class="empty-state">
           <text class="empty-text">{{ hasActiveFilter || searchKeyword ? '没有找到符合条件的招募' : '暂无招募，快去发布第一个吧' }}</text>
         </view>
         <view
           class="card"
           v-for="item in list"
-          :key="item.id"
+          :key="item._id"
           @tap="goDetail(item)"
         >
           <!-- 已发车蒙层 -->
@@ -156,9 +231,9 @@ const goDetail = (item) => {
 
             <!-- 右侧：标题 + tag -->
             <view class="card-title">
-              <text class="module-name">{{ item.name }}</text>
+              <text class="module-name">{{ item.title }}</text>
               <view class="tags-row">
-                <view class="tag" v-for="tag in item.tags" :key="tag">
+                <view class="tag" v-for="tag in buildTags(item)" :key="tag">
                   <text class="tag-text">{{ tag }}</text>
                 </view>
               </view>
@@ -179,7 +254,7 @@ const goDetail = (item) => {
                 <!-- TODO: 替换为正式icon -->
                 <text class="icon-placeholder">👥</text>
                 <text class="info-label">招募对象</text>
-                <text class="info-value">{{ item.recruit }}</text>
+                <text class="info-value">{{ formatRecruit(item) }}</text>
               </view>
             </view>
 
@@ -191,7 +266,7 @@ const goDetail = (item) => {
                 <text class="info-label">跑团时间</text>
                 <text class="info-value time-text">{{ formatGameTime(item.gameDays, item.startTime, item.endTime) }}</text>
               </view>
-              <text class="publisher-name">{{ item.publisherName }}</text>
+              <text class="publisher-name">{{ item.creatorNickname }}</text>
             </view>
           </view>
         </view>

@@ -1,21 +1,17 @@
 {
-  "name": "跑腿小程序",
+  "name": "跑团组局小程序",
   "appid": "",
-  "description": "快速跑腿，随叫随到",
+  "description": "TRPG跑团组局小程序",
   "versionName": "1.0.0",
   "versionCode": "100",
   "transformPx": false,
   "mp-weixin": {
-    "appid": "",
+    "appid": "wxd7a68c82e1000d88",
+    "cloudfunctionRoot": "cloudfunctions/",
     "setting": {
       "urlCheck": false
     },
-    "usingComponents": true,
-    "permission": {
-      "scope.userLocation": {
-        "desc": "获取您的位置信息，用于匹配附近跑腿员"
-      }
-    }
+    "usingComponents": true
   },
   "uniStatistics": {
     "enable": false

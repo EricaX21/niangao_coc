@@ -1,17 +1,15 @@
 <!-- 我的创建/申请/足迹列表页 - 浅色主题，Tab切换，卡片样式与招募大厅一致 -->
 <script setup>
 import { ref, computed, watch } from 'vue'
-import { onLoad } from '@dcloudio/uni-app'
-import { useGameStore } from '@/store/game'
-import { useUserStore } from '@/store/user'
+import { onLoad, onShow } from '@dcloudio/uni-app'
+import { getMyModules } from '@/api/module'
 import { fuzzySearch } from '@/utils/search'
 import { formatGameTime } from '@/utils/formatTime'
 
-const gameStore = useGameStore()
-const userStore = useUserStore()
-
 const activeTab = ref('created')
 const searchKeyword = ref('')
+const loading = ref(false)
+const rawList = ref([])
 
 const tabs = [
   { key: 'created', label: '我的创建' },
@@ -22,21 +20,120 @@ onLoad((options) => {
   if (options?.tab && options.tab !== 'history') activeTab.value = options.tab
 })
 
-// 从 store 响应式读取，发布/申请/审批后自动刷新，支持模糊搜索
-const listData = computed(() => {
-  let base = []
-  if (activeTab.value === 'created') {
-    base = gameStore.modulesByCreator(userStore.uid)
-  } else if (activeTab.value === 'applied') {
-    // 返回带有 _appStatus/_appId 的模组数据
-    base = gameStore.applicationsByUser(userStore.uid)
+// 从云函数加载当前 tab 数据
+const loadList = async () => {
+  loading.value = true
+  try {
+    const data = await getMyModules(activeTab.value)
+    rawList.value = data || []
+  } catch (error) {
+    console.error('loadList error:', error)
+    rawList.value = []
+  } finally {
+    loading.value = false
   }
-  if (!searchKeyword.value) return base
-  return fuzzySearch(searchKeyword.value, base, ['name', 'tags'])
+}
+
+// onShow 时重新加载（从 P9/P3 返回时需要刷新）
+onShow(() => {
+  loadList()
 })
 
-// 切换 tab 时清空搜索词
-watch(activeTab, () => { searchKeyword.value = '' })
+// 将原始云数据规范化为卡片展示结构
+// created tab：模组扁平结构；applied tab：申请记录 + moduleInfo 嵌套
+const normalizeItem = (item) => {
+  if (activeTab.value === 'applied') {
+    const m = item.moduleInfo
+    if (!m) {
+      // 模组已被删除，仍保留卡片占位
+      return {
+        _id: null,
+        _appId: item._id,
+        _appStatus: item.status,
+        title: '招募已删除',
+        publisherNickname: '',
+        intro: '',
+        status: 'deleted',
+        tags: [],
+        duration: '-',
+        gameDays: [],
+        startTime: '',
+        endTime: '',
+        cover: '',
+        recruit: '-',
+        applicantCount: 0,
+        isDraft: false,
+      }
+    }
+    return {
+      _id: m._id,
+      _appId: item._id,
+      _appStatus: item.status,
+      title: m.title,
+      publisherNickname: m.creatorNickname || '',
+      intro: m.intro || '',
+      status: m.status,
+      tags: buildTags(m),
+      duration: m.duration,
+      gameDays: m.gameDays,
+      startTime: m.startTime,
+      endTime: m.endTime,
+      cover: m.coverImage || '',
+      recruit: formatRecruit(m),
+      applicantCount: m.applyCount || 0,
+      isDraft: m.status === 'draft',
+    }
+  }
+  // created tab
+  return {
+    _id: item._id,
+    _appId: null,
+    _appStatus: null,
+    title: item.title,
+    publisherNickname: item.creatorNickname || '',
+    intro: item.intro || '',
+    status: item.status,
+    tags: buildTags(item),
+    duration: item.duration,
+    gameDays: item.gameDays,
+    startTime: item.startTime,
+    endTime: item.endTime,
+    cover: item.coverImage || '',
+    recruit: formatRecruit(item),
+    applicantCount: item.applyCount || 0,
+    isDraft: item.status === 'draft',
+  }
+}
+
+// 根据 plCount / recruitKP 拼接招募对象展示文本
+const formatRecruit = (item) => {
+  const parts = []
+  if (item.recruitKP) parts.push('1KP')
+  if (item.plCount) parts.push(`${item.plCount}PL`)
+  return parts.length > 0 ? parts.join(' ') : '待定'
+}
+
+// 从 rule / mode / playerCount 动态生成 tag 数组
+const buildTags = (item) => {
+  const tags = []
+  if (item.mode) tags.push(item.mode)
+  if (item.rule) tags.push(item.rule)
+  if (item.playerCount) tags.push(`${item.playerCount}人`)
+  return tags
+}
+
+// 规范化后的列表 + 前端模糊搜索（按标题 + tags）
+const listData = computed(() => {
+  const base = rawList.value.map(normalizeItem)
+  if (!searchKeyword.value) return base
+  return fuzzySearch(searchKeyword.value, base, ['title', 'publisherNickname', 'intro'])
+})
+
+// 切换 tab 时清空搜索词并重新加载
+watch(activeTab, () => {
+  searchKeyword.value = ''
+  loadList()
+})
 
 /**
  * 申请状态标签文字
@@ -67,14 +164,18 @@ const appStatusClass = (appStatus, moduleStatus) => {
 // 草稿卡片直接进编辑表单，非草稿进详情页
 const handleCardTap = (item) => {
   if (activeTab.value === 'created') {
-    if (item.draft) {
-      uni.navigateTo({ url: `/pages/publish/form?id=${item.id}` })
+    if (item.isDraft) {
+      uni.navigateTo({ url: `/pages/publish/form?id=${item._id}` })
     } else {
-      uni.navigateTo({ url: `/pages/mine/detail?id=${item.id}` })
+      uni.navigateTo({ url: `/pages/mine/detail?id=${item._id}` })
     }
   } else {
-    // 申请人视角 → 申请人详情页
-    uni.navigateTo({ url: `/pages/home/detail?id=${item.id}` })
+    // 申请人视角 → 模组已删除时 Toast 提示
+    if (!item._id) {
+      uni.showToast({ title: '该招募已不存在', icon: 'none' })
+      return
+    }
+    uni.navigateTo({ url: `/pages/home/detail?id=${item._id}` })
   }
 }
 
@@ -104,7 +205,7 @@ const goCreate = () => uni.navigateTo({ url: '/pages/publish/form' })
       <view class="search-wrap">
         <input
           v-model="searchKeyword"
-          placeholder="搜索模组名称"
+          placeholder="搜索模组名称/发布人/简介"
           placeholder-class="search-placeholder"
           class="search-input"
           maxlength="30"
@@ -120,14 +221,14 @@ const goCreate = () => uni.navigateTo({ url: '/pages/publish/form' })
       <view class="list-inner">
 
         <!-- 空状态 -->
-        <view v-if="listData.length === 0" class="empty-state">
-          <text class="empty-text">{{ activeTab === 'created' ? '还没有发布过招募' : '还没有申请过招募' }}</text>
+        <view v-if="!loading && listData.length === 0" class="empty-state">
+          <text class="empty-text">{{ activeTab === 'created' ? '还没有发布招募，去发布一个吧' : '还没有申请过招募' }}</text>
         </view>
 
         <view
           class="card"
           v-for="item in listData"
-          :key="item._appId || item.id"
+          :key="item._appId || item._id"
           @tap="handleCardTap(item)"
         >
           <!-- 已发车蒙层 -->
@@ -142,7 +243,7 @@ const goCreate = () => uni.navigateTo({ url: '/pages/publish/form' })
               <view v-else class="cover-placeholder" />
             </view>
             <view class="card-title">
-              <text class="module-name">{{ item.draft ? '（草稿）' + item.name : item.name }}</text>
+              <text class="module-name">{{ item.isDraft ? '（草稿）' + item.title : item.title }}</text>
               <view class="tags-row">
                 <view class="tag" v-for="tag in item.tags" :key="tag">
                   <text class="tag-text">{{ tag }}</text>
@@ -173,7 +274,7 @@ const goCreate = () => uni.navigateTo({ url: '/pages/publish/form' })
               </view>
               <!-- 我的创建：招募中显示申请人数 -->
               <text
-                v-if="activeTab === 'created' && !item.draft && item.status === 'recruiting'"
+                v-if="activeTab === 'created' && !item.isDraft && item.status === 'recruiting'"
                 class="applicant-count"
               >{{ item.applicantCount }}人申请</text>
               <!-- 我的申请：显示申请状态标签，发车后追加「· 已发车」 -->

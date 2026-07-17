@@ -5,12 +5,13 @@
  * 接入后端时只需替换各 action 的实现，页面代码不需要改动。
  */
 import { defineStore } from 'pinia'
-import { getModuleList, getApplicationList } from '../api/module'
+import { getApplicationList } from '../api/module'
+import { mockModuleList } from '../utils/mockData'
 
 export const useGameStore = defineStore('game', {
   state: () => ({
-    // 深拷贝，确保 store 状态与 mock 数据引用隔离
-    modules: JSON.parse(JSON.stringify(getModuleList())),
+    // P1/P2 已改为云函数读取，store.modules 仅供 P8/P9/P10 等未改造页面使用
+    modules: JSON.parse(JSON.stringify(mockModuleList)),
     applications: JSON.parse(JSON.stringify(getApplicationList())),
     // 编辑模式：从发布人详情页 switchTab 到发布页时，通过此字段传递要编辑的模组 id
     editingModuleId: null,
@@ -48,7 +49,8 @@ export const useGameStore = defineStore('game', {
 
   actions: {
     /**
-     * 发布/更新招募
+     * [已废弃] 发布数据现在直接写入云数据库（api/module.js 的 createModule / updateModule），不再经过 store
+     * 保留此方法仅供未改造页面兼容
      * @param {object} formData 表单数据
      * @param {object} creator  { uid, nickname }
      * @param {boolean} isDraft 是否保存为草稿

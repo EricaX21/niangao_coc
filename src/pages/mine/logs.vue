@@ -1,13 +1,20 @@
 <!-- 演绎记录列表页 - 展示本人的所有跑团记录 -->
 <script setup>
 import { ref } from 'vue'
-import { onLoad } from '@dcloudio/uni-app'
-import { getLogList } from '@/api/log'
+import { onShow } from '@dcloudio/uni-app'
+import { getLogsByAuthor } from '@/api/log'
+import { useUserStore } from '@/store/user'
 
+const userStore = useUserStore()
 const logs = ref([])
 
-onLoad(() => {
-  logs.value = [...getLogList()]
+// 每次进入都拉取最新（新建/编辑后返回可见更新）
+onShow(async () => {
+  if (userStore.isLoggedIn) {
+    logs.value = await getLogsByAuthor(userStore.uid)
+  } else {
+    logs.value = []
+  }
 })
 
 // 新增记录
@@ -17,7 +24,7 @@ const goCreate = () => {
 
 // 查看记录详情
 const goDetail = (log) => {
-  uni.navigateTo({ url: `/pages/profile/log_detail?id=${log.id}` })
+  uni.navigateTo({ url: `/pages/profile/log_detail?id=${log._id}` })
 }
 </script>
 
@@ -39,7 +46,7 @@ const goDetail = (log) => {
         <!-- 记录卡片 -->
         <view
           v-for="item in logs"
-          :key="item.id"
+          :key="item._id"
           class="log-card"
           @tap="goDetail(item)"
         >

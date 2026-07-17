@@ -18,6 +18,7 @@
 - **每次修改代码前必须重新阅读本文件**，不得以任何理由跳过
 - 页面极简优先，减少不必要的功能入口
 - 修改完成后不需要编译验证，由产品方在微信开发者工具中自行测试
+- 云函数代码在项目根目录 `cloudfunctions/` 下编写，修改后需手动复制到 `dist/dev/mp-weixin/cloudfunctions/` 才能在微信开发者工具中部署
 
 ---
 
@@ -77,6 +78,15 @@
 - 样式使用 SCSS，颜色和间距使用 `src/uni.scss` 全局变量
 - 只用 `const` 和 `let`，禁止 `var`
 - 异步用 `async/await`，不用 `.then()` 链
+
+### 命名与注释规范
+- 变量、函数、组件名必须使用语义化命名，禁止使用无意义的序号或字母命名（如 btn1、handleA、item2、dataList2）
+- 函数名体现行为：goToPublisherProfile、submitApplication、formatGameTime
+- 布尔变量体现状态：isOwner、isLoggedIn、hasApplied，禁止用 flag1、check 等模糊命名
+- 组件 props 和 emit 事件名同样语义化：onApprove、onReject，禁止 onAction1
+- 关键业务逻辑旁必须加单行中文注释，包括：视角判断（本人/他人）、状态流转（draft→recruiting→finished）、权限检查（登录拦截）、数据过滤条件
+- 纯 UI 样式代码、模板标签结构不需要注释
+- 工具函数（src/utils/）的每个导出函数必须有一行注释说明用途和参数
 
 ### uni-app 规范
 - 布局用 `<view>`，文字用 `<text>`，图片用 `<image>` 并设 mode

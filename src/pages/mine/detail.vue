@@ -4,45 +4,47 @@ import { ref, computed } from 'vue'
 import { onLoad, onShow, onShareAppMessage } from '@dcloudio/uni-app'
 import ModuleDetail from '@/components/ModuleDetail.vue'
 import ShareMenu from '@/components/ShareMenu.vue'
-import { useGameStore } from '@/store/game'
-import { getUserByUid } from '@/api/user'
+import { getModuleById, updateModule, departModule } from '@/api/module'
+import { safeNavigateBack } from '@/utils/navigation'
 
-const gameStore = useGameStore()
 const moduleId = ref(null)
+const currentModule = ref(null)
+const loading = ref(false)
 const showShareMenu = ref(false)
 
 onLoad((options) => {
-  moduleId.value = options.id || gameStore.modules[0]?.id || null
+  moduleId.value = options?.id || null
 })
 
-// 每次 onShow 时重新读取，从审核页返回后已通过/待审核人数立即更新
+// 每次 onShow 时重新加载，从审核页返回后数据立即更新
 onShow(() => {
-  // store 已是响应式数据源，computed 自动更新，此处保留 hook 供后端接口替换
+  if (moduleId.value) {
+    loadDetail()
+  }
 })
 
-// 从 store 响应式读取
-const currentModule = computed(() =>
-  moduleId.value ? gameStore.modules.find(m => m.id == moduleId.value) : null
-)
+// 从云函数加载模组详情
+const loadDetail = async () => {
+  loading.value = true
+  try {
+    const data = await getModuleById(moduleId.value)
+    currentModule.value = data
+  } catch (error) {
+    console.error('loadDetail error:', error)
+    currentModule.value = null
+  } finally {
+    loading.value = false
+  }
+}
 
 // 当前招募状态：draft / recruiting / finished
 const moduleStatus = computed(() => {
   if (!currentModule.value) return 'recruiting'
-  if (currentModule.value.draft) return 'draft'
+  if (currentModule.value.status === 'draft') return 'draft'
   return currentModule.value.status
 })
 
-// 已通过人数（用于发车确认弹窗）
-const approvedCount = computed(() =>
-  gameStore.applicationsByModule(moduleId.value).filter(a => a.status === 'approved').length
-)
-
-// 待审核人数（用于发车确认弹窗显示未处理数量）
-const pendingCount = computed(() =>
-  gameStore.applicationsByModule(moduleId.value).filter(a => a.status === 'pending').length
-)
-
-// 编辑：带 id 参数直接跳转表单页
+// 编辑：带 _id 参数直接跳转表单页
 const handleEdit = () => {
   uni.navigateTo({ url: `/pages/publish/form?id=${moduleId.value}` })
 }
@@ -52,36 +54,41 @@ const handleReview = () => {
   uni.navigateTo({ url: `/pages/mine/review?id=${moduleId.value}` })
 }
 
-// 发布（草稿 → 招募中）：弹「发出去喽」确认，与 P3 表单行为一致
+// 发布（草稿 → 招募中）
 const handlePublish = () => {
   uni.showModal({
     title: '发出去喽',
     content: '发布后招募将在大厅对外展示，确认发布？',
-    success: (res) => {
+    success: async (res) => {
       if (res.confirm) {
-        gameStore.updateModuleStatus(moduleId.value, { draft: false, status: 'recruiting' })
-        uni.showToast({ title: '发出去喽 🎉', icon: 'success' })
-        setTimeout(() => uni.navigateBack(), 1500)
+        const result = await updateModule(moduleId.value, { status: 'recruiting' })
+        if (result.success) {
+          uni.showToast({ title: '发出去喽', icon: 'success' })
+          setTimeout(() => safeNavigateBack(), 1500)
+        } else {
+          uni.showToast({ title: result.message || '发布失败', icon: 'none' })
+        }
       }
     },
   })
 }
 
-// 发车（招募中 → 已发车）：自动清算所有 pending 申请
+// 发车（招募中 → 已发车）：云函数自动清算所有 pending 申请
 const handleDepart = () => {
-  const content = pendingCount.value > 0
-    ? `当前已通过 ${approvedCount.value} 人，发车后招募将关闭，未处理的申请将自动标记为未通过，确认发车？`
-    : `当前已通过 ${approvedCount.value} 人，发车后招募将关闭，确认发车？`
+  const approvedNum = currentModule.value?.approvedCount || 0
 
   uni.showModal({
     title: '确认发车',
-    content,
-    success: (res) => {
+    content: `当前已通过 ${approvedNum} 人，发车后招募将关闭，确认发车？`,
+    success: async (res) => {
       if (res.confirm) {
-        // 发车 + 自动清算 pending（一次操作完成）
-        gameStore.departModule(moduleId.value)
-        uni.showToast({ title: '已发车！', icon: 'success' })
-        setTimeout(() => uni.redirectTo({ url: '/pages/mine/created?tab=created' }), 1500)
+        const result = await departModule(moduleId.value)
+        if (result.success) {
+          uni.showToast({ title: '已发车！', icon: 'success' })
+          setTimeout(() => uni.redirectTo({ url: '/pages/mine/created?tab=created' }), 1500)
+        } else {
+          uni.showToast({ title: result.message || '发车失败', icon: 'none' })
+        }
       }
     },
   })
@@ -89,12 +96,15 @@ const handleDepart = () => {
 
 // 发布人信息（用于海报生成）
 const creatorInfo = computed(() => {
-  if (!currentModule.value?.creatorId) return {}
-  return getUserByUid(currentModule.value.creatorId) || {}
+  if (!currentModule.value) return {}
+  return {
+    nickname: currentModule.value.creatorNickname || '',
+    avatar: currentModule.value.creatorAvatar || ''
+  }
 })
 
 onShareAppMessage(() => ({
-  title: currentModule.value?.name || '来看看这个跑团招募',
+  title: currentModule.value?.title || '来看看这个跑团招募',
   path: `/pages/home/detail?id=${moduleId.value}`,
 }))
 </script>
@@ -102,10 +112,15 @@ onShareAppMessage(() => ({
 <template>
   <view class="page-container">
 
+    <!-- 加载中 -->
+    <view v-if="loading && !currentModule" class="loading-state">
+      <text class="loading-text">加载中...</text>
+    </view>
+
     <!-- 页面内容（可滚动） -->
-    <scroll-view scroll-y class="scroll-area">
+    <scroll-view v-else scroll-y class="scroll-area">
       <view class="module-title-wrap" v-if="currentModule">
-        <text class="module-title">{{ currentModule.name }}</text>
+        <text class="module-title">{{ currentModule.title }}</text>
         <view class="title-right">
           <view v-if="moduleStatus === 'draft'" class="draft-tag">
             <text class="draft-tag-text">草稿</text>
@@ -117,11 +132,17 @@ onShareAppMessage(() => ({
       </view>
 
       <ModuleDetail v-if="currentModule" :module="currentModule" />
+
+      <!-- 空状态 -->
+      <view v-if="!currentModule && !loading" class="empty-state">
+        <text class="empty-text">模组不存在或已被删除</text>
+      </view>
+
       <view class="bottom-placeholder" />
     </scroll-view>
 
     <!-- 底部按钮区（随状态变化） -->
-    <view class="bottom-bar">
+    <view class="bottom-bar" v-if="currentModule">
 
       <!-- 草稿状态：编辑 + 发布 -->
       <view v-if="moduleStatus === 'draft'" class="btn-row">
@@ -175,6 +196,31 @@ onShareAppMessage(() => ({
 
 .scroll-area {
   flex: 1;
+}
+
+.loading-state {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 200rpx 0;
+}
+
+.loading-text {
+  font-size: 28rpx;
+  color: #b2b2b2;
+}
+
+.empty-state {
+  padding: 200rpx 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.empty-text {
+  font-size: 28rpx;
+  color: #b2b2b2;
 }
 
 .module-title-wrap {

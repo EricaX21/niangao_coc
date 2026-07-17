@@ -5,6 +5,8 @@ import { onLoad, onShow, onUnload } from '@dcloudio/uni-app'
 import { useGameStore } from '@/store/game'
 import { useUserStore } from '@/store/user'
 import { checkLogin } from '@/utils/auth'
+import { safeNavigateBack } from '@/utils/navigation'
+import { createModule, updateModule, getModuleById } from '@/api/module'
 
 const gameStore = useGameStore()
 const userStore = useUserStore()
@@ -36,7 +38,6 @@ const form = reactive({
   endTime: '',
   rule: '',
   mode: '',
-  totalCount: '',
   plCount: '',
   recruitKP: false,
   intro: '',
@@ -44,69 +45,100 @@ const form = reactive({
   inviteValue: ''
 })
 
-// URL 参数传入的编辑 id
-const urlEditId = ref(null)
-// 当前正在编辑的模组 id（贯穿整个编辑生命周期，发布/保存时传给 store）
+// 当前正在编辑的模组 _id（云数据库字符串 id）
 const editingId = ref(null)
+const submitting = ref(false)
+// 进入编辑模式时保存原始数据快照，用于判断是否有修改
+const originalSnapshot = ref('')
+
+// 将表单数据转换为云函数期望的字段格式
+// playerCount 由系统自动计算：plCount + (recruitKP ? 1 : 0)
+const buildCloudData = () => {
+  const plNum = Number(form.plCount) || 0
+  return {
+    title: form.name,
+    rule: form.rule,
+    mode: form.mode,
+    duration: form.duration,
+    gameDays: form.gameDays,
+    startTime: form.startTime,
+    endTime: form.endTime,
+    playerCount: plNum + (form.recruitKP ? 1 : 0),
+    plCount: plNum,
+    recruitKP: form.recruitKP,
+    intro: form.intro,
+    contact: { type: form.inviteType || 'qq', value: form.inviteValue || '' },
+    coverImage: form.cover || ''
+  }
+}
 
 onLoad(async (options) => {
-  console.log('=== form onLoad, isLoggedIn:', userStore.isLoggedIn)
   // 登录检查：未登录则弹确认框，取消则立即返回
   const ok = await checkLogin(userStore)
   if (!ok) {
-    uni.navigateBack()
+    safeNavigateBack()
     return
   }
+
+  // URL 参数带 id → 编辑模式，从云数据库加载数据回填
   if (options?.id) {
-    urlEditId.value = options.id
+    editingId.value = options.id
+    const moduleData = await getModuleById(options.id)
+    if (moduleData) {
+      fillForm(moduleData)
+    }
   }
 })
 
 onShow(() => {
-  // 优先取 URL 参数 id，其次取 store 中的 id（兼容旧入口）
-  const editId = urlEditId.value || gameStore.editingModuleId
-  urlEditId.value = null
-  if (editId) {
-    editingId.value = editId
-    const found = gameStore.modules.find(m => m.id == editId)
-    if (found) {
-      form.cover = found.cover || ''
-      form.name = found.name || ''
-      form.duration = found.duration || ''
-      form.gameDays = found.gameDays ? [...found.gameDays] : []
-      form.startTime = found.startTime || ''
-      form.endTime = found.endTime || ''
-      form.rule = found.rule || ''
-      form.mode = found.mode || ''
-      form.totalCount = found.totalCount ? String(found.totalCount) : ''
-      form.plCount = found.plCount ? String(found.plCount) : ''
-      form.recruitKP = found.recruitKP || false
-      form.intro = found.intro || ''
-      // 编辑模式：联系方式必须回填，否则用户可能忘填导致通过审核的申请人看不到联系方式
-      if (found.contact && typeof found.contact === 'object') {
-        form.inviteType = found.contact.type || 'qq'
-        form.inviteValue = found.contact.value || ''
-      } else {
-        form.inviteType = 'qq'
-        form.inviteValue = found.contact || ''
-      }
-    }
+  // 兼容旧入口：从 store 中获取 editingModuleId（P9 通过 switchTab 传递）
+  const storeEditId = gameStore.editingModuleId
+  if (storeEditId && !editingId.value) {
+    editingId.value = storeEditId
     gameStore.clearEditingModuleId()
-  } else if (!editingId.value) {
-    // 新建模式：重置表单
-    Object.assign(form, {
-      cover: '', name: '', duration: '', gameDays: [],
-      startTime: '', endTime: '',
-      rule: '', mode: '', totalCount: '', plCount: '',
-      recruitKP: false, intro: '', inviteType: 'qq', inviteValue: ''
+    // 从云数据库加载数据回填
+    getModuleById(storeEditId).then(moduleData => {
+      if (moduleData) fillForm(moduleData)
     })
   }
+})
+
+// 将云数据库返回的模组数据回填到表单
+const fillForm = (data) => {
+  form.cover = data.coverImage || data.cover || ''
+  form.name = data.title || data.name || ''
+  form.duration = data.duration || ''
+  form.gameDays = data.gameDays ? [...data.gameDays] : []
+  form.startTime = data.startTime || ''
+  form.endTime = data.endTime || ''
+  form.rule = data.rule || ''
+  form.mode = data.mode || ''
+  form.plCount = data.plCount ? String(data.plCount) : ''
+  form.recruitKP = data.recruitKP || false
+  form.intro = data.intro || ''
+  // 联系方式回填
+  if (data.contact && typeof data.contact === 'object') {
+    form.inviteType = data.contact.type || 'qq'
+    form.inviteValue = data.contact.value || ''
+  } else {
+    form.inviteType = 'qq'
+    form.inviteValue = ''
+  }
+  // 进入编辑模式后保存原始快照，用于判断是否有修改
+  originalSnapshot.value = JSON.stringify(form)
+}
+
+// 判断编辑模式下表单是否被修改（与进入时的原始快照对比）
+const isEditMode = computed(() => !!editingId.value)
+const hasChanged = computed(() => {
+  if (!isEditMode.value) return false
+  return JSON.stringify(form) !== originalSnapshot.value
 })
 
 // 判断表单是否有内容（用于返回键弹窗逻辑）
 const hasAnyContent = computed(() =>
   form.name || form.duration || form.gameDays.length > 0 || form.startTime ||
-  form.rule || form.mode || form.totalCount || form.plCount || form.intro || form.inviteValue
+  form.rule || form.mode || form.plCount || form.intro || form.inviteValue
 )
 
 /**
@@ -117,7 +149,13 @@ const hasAnyContent = computed(() =>
  */
 const hasExplicitlySaved = ref(false)
 
-watch(hasAnyContent, (val) => {
+// 编辑模式：仅在有改动时弹窗；新建模式：有内容即弹窗
+const shouldAlertBeforeUnload = computed(() => {
+  if (isEditMode.value) return hasChanged.value
+  return hasAnyContent.value
+})
+
+watch(shouldAlertBeforeUnload, (val) => {
   if (val) {
     wx.enableAlertBeforeUnload({ message: '填写的内容将丢失，确认离开？' })
   } else {
@@ -126,9 +164,13 @@ watch(hasAnyContent, (val) => {
 }, { immediate: true })
 
 onUnload(() => {
-  // 未主动保存/发布且已填写模组名称 → 自动存草稿
+  // 编辑模式：仅看不改直接返回时不能把原记录写成草稿，原状态必须保持
+  if (isEditMode.value) return
+  // 新建模式：未主动保存/发布且已填写模组名称 → 自动存草稿到云数据库
   if (!hasExplicitlySaved.value && form.name) {
-    gameStore.publishModule(form, creator(), true, editingId.value)
+    const cloudData = buildCloudData()
+    cloudData.status = 'draft'
+    createModule(cloudData)
   }
 })
 
@@ -156,28 +198,71 @@ const invitePlaceholder = computed(() => {
   return map[form.inviteType] || '请输入联系方式'
 })
 
-const creator = () => ({ uid: userStore.uid, nickname: userStore.nickname })
-
 // 保存草稿：仅要求填写模组名称
-const handleSaveDraft = () => {
+const handleSaveDraft = async () => {
   if (!form.name) return uni.showToast({ title: '请填写模组名称', icon: 'none' })
+  if (submitting.value) return
+  submitting.value = true
   hasExplicitlySaved.value = true
-  gameStore.publishModule(form, creator(), true, editingId.value)
-  uni.showToast({ title: '草稿已保存', icon: 'success' })
-  setTimeout(() => uni.redirectTo({ url: '/pages/mine/created?tab=created' }), 800)
+  uni.showLoading({ title: '保存中...', mask: true })
+
+  const cloudData = buildCloudData()
+  cloudData.status = 'draft'
+
+  const result = editingId.value
+    ? await updateModule(editingId.value, cloudData)
+    : await createModule(cloudData)
+
+  submitting.value = false
+  uni.hideLoading()
+
+  if (result.success) {
+    uni.showToast({ title: '草稿已保存', icon: 'success' })
+    // 编辑模式：返回上一页（P9），P9 onShow 会刷新数据
+    // 新建模式：redirectTo 到 P8，替换空表单页
+    if (isEditMode.value) {
+      setTimeout(() => uni.navigateBack(), 1500)
+    } else {
+      setTimeout(() => uni.redirectTo({ url: '/pages/mine/created?tab=created' }), 1500)
+    }
+  } else {
+    uni.showToast({ title: result.message || '保存失败', icon: 'none' })
+  }
 }
 
 // 发布：需完整填写必填项，发布后弹「发出去喽」提示
-const handlePublish = () => {
+const handlePublish = async () => {
   if (!userStore.isLoggedIn) return uni.showToast({ title: '请先登录再发布', icon: 'none' })
   if (!form.name) return uni.showToast({ title: '请填写模组名称', icon: 'none' })
   if (!form.rule) return uni.showToast({ title: '请选择跑团规则', icon: 'none' })
   if (!form.mode) return uni.showToast({ title: '请选择跑团方式', icon: 'none' })
+  if (submitting.value) return
+  submitting.value = true
   hasExplicitlySaved.value = true
-  gameStore.publishModule(form, creator(), false, editingId.value)
-  // 发布成功提示，让用户明确感知已发布，而非静默跳转
-  uni.showToast({ title: '发出去喽 🎉', icon: 'success' })
-  setTimeout(() => uni.redirectTo({ url: '/pages/mine/created?tab=created' }), 800)
+  uni.showLoading({ title: '发布中...', mask: true })
+
+  const cloudData = buildCloudData()
+  cloudData.status = 'recruiting'
+
+  const result = editingId.value
+    ? await updateModule(editingId.value, cloudData)
+    : await createModule(cloudData)
+
+  submitting.value = false
+  uni.hideLoading()
+
+  if (result.success) {
+    uni.showToast({ title: '发出去喽', icon: 'success' })
+    // 编辑模式：返回上一页（P9），P9 onShow 会刷新数据
+    // 新建模式：redirectTo 到 P8，替换空表单页
+    if (isEditMode.value) {
+      setTimeout(() => uni.navigateBack(), 1500)
+    } else {
+      setTimeout(() => uni.redirectTo({ url: '/pages/mine/created?tab=created' }), 1500)
+    }
+  } else {
+    uni.showToast({ title: result.message || '发布失败', icon: 'none' })
+  }
 }
 </script>
 
@@ -306,25 +391,9 @@ const handlePublish = () => {
       </view>
       <view class="divider" />
 
-      <!-- 跑团人数 -->
+      <!-- 招募PL -->
       <view class="form-item">
-        <text class="item-label">跑团人数</text>
-        <view class="number-input-wrap">
-          <input
-            v-model="form.totalCount"
-            type="number"
-            placeholder="0"
-            placeholder-class="input-placeholder"
-            class="number-input"
-          />
-          <text class="unit-text">人</text>
-        </view>
-      </view>
-      <view class="divider" />
-
-      <!-- 招募PL（子项，缩进） -->
-      <view class="form-item form-item-indent">
-        <text class="item-label item-label-sub">招募PL</text>
+        <text class="item-label">招募PL</text>
         <view class="number-input-wrap">
           <input
             v-model="form.plCount"
@@ -338,9 +407,9 @@ const handlePublish = () => {
       </view>
       <view class="divider" />
 
-      <!-- 招募KP（子项，缩进，Toggle） -->
-      <view class="form-item form-item-indent">
-        <text class="item-label item-label-sub">招募KP</text>
+      <!-- 招募KP（Toggle） -->
+      <view class="form-item">
+        <text class="item-label">招募KP</text>
         <switch
           :checked="form.recruitKP"
           @change="form.recruitKP = $event.detail.value"
@@ -404,7 +473,7 @@ const handlePublish = () => {
   </view>
 </template>
 
-<style lang="scss" scoped>
+<style lang="scss">
 .page {
   min-height: 100%;
   background-color: $bg-page;
@@ -671,28 +740,25 @@ const handlePublish = () => {
   }
 
   .invite-type-tag {
-    height: 56rpx;
-    padding: 0 28rpx;
+    padding: 8rpx 28rpx;
     border-radius: 28rpx;
-    border: 1rpx solid #CCCCCC;
-    background-color: #FFFFFF;
+    background-color: transparent;
     display: flex;
     align-items: center;
     justify-content: center;
     box-sizing: border-box;
 
     &.active {
-      background-color: #2c2c2c;
-      border-color: #2c2c2c;
+      background-color: #434343;
     }
   }
 
   .invite-type-text {
-    font-size: 24rpx;
-    color: #333333;
+    font-size: 26rpx;
+    color: #363636;
 
     .active & {
-      color: #FFFFFF;
+      color: #ffffff;
     }
   }
 
@@ -728,10 +794,12 @@ const handlePublish = () => {
   bottom: 0;
   left: 0;
   right: 0;
+  z-index: 100;
   padding: 20rpx 32rpx;
   padding-bottom: calc(20rpx + env(safe-area-inset-bottom));
   background-color: #FFFFFF;
   border-top: 1rpx solid #EEEEEE;
+  box-shadow: 0 -2rpx 10rpx rgba(0, 0, 0, 0.05);
   box-sizing: border-box;
 
   .btn-row {

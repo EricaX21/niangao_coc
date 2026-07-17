@@ -1,24 +1,39 @@
 <!-- 审核页 - 发布人查看申请人列表并审批 -->
 <script setup>
 import { ref, computed } from 'vue'
-import { onLoad } from '@dcloudio/uni-app'
-import { useGameStore } from '@/store/game'
+import { onLoad, onShow } from '@dcloudio/uni-app'
+import { getApplicationsByModule, reviewApplication } from '@/api/module'
 
-const gameStore = useGameStore()
 const moduleId = ref('')
+const moduleName = ref('')
+const applications = ref([])
+const loading = ref(false)
 
 onLoad((options) => {
   if (options.id) moduleId.value = options.id
+  if (options.name) moduleName.value = options.name
 })
 
-// 从 store 响应式读取，审批后自动刷新
-const currentModule = computed(() =>
-  gameStore.modules.find(m => m.id == moduleId.value) || null
-)
-const moduleName = computed(() => currentModule.value?.name || '')
-const applications = computed(() =>
-  gameStore.applicationsByModule(moduleId.value)
-)
+// 每次 onShow 时重新加载，审批后返回时数据立即更新
+onShow(() => {
+  if (moduleId.value) {
+    loadApplications()
+  }
+})
+
+// 从云函数加载申请列表
+const loadApplications = async () => {
+  loading.value = true
+  try {
+    applications.value = await getApplicationsByModule(moduleId.value)
+  } catch (error) {
+    console.error('loadApplications error:', error)
+    applications.value = []
+  } finally {
+    loading.value = false
+  }
+}
+
 const approvedCount = computed(() =>
   applications.value.filter(a => a.status === 'approved').length
 )
@@ -26,12 +41,17 @@ const approvedCount = computed(() =>
 const handleApprove = (item) => {
   uni.showModal({
     title: '确认同意',
-    content: `同意 ${item.nickname} 加入本次招募？`,
-    success: (res) => {
+    content: `同意 ${item.applicantNickname} 加入本次招募？`,
+    success: async (res) => {
       if (res.confirm) {
-        // mock：调用 store action，接口接入后替换
-        gameStore.reviewApplication(item.id, 'approved')
-        uni.showToast({ title: '已同意', icon: 'success' })
+        const result = await reviewApplication(item._id, 'approve')
+        if (result.success) {
+          // 更新本地列表状态，不需要重新请求整个列表
+          item.status = 'approved'
+          uni.showToast({ title: '已同意', icon: 'success' })
+        } else {
+          uni.showToast({ title: result.message || '操作失败', icon: 'none' })
+        }
       }
     }
   })
@@ -40,19 +60,25 @@ const handleApprove = (item) => {
 const handleReject = (item) => {
   uni.showModal({
     title: '确认拒绝',
-    content: `拒绝 ${item.nickname} 的申请？`,
-    success: (res) => {
+    content: `拒绝 ${item.applicantNickname} 的申请？`,
+    success: async (res) => {
       if (res.confirm) {
-        gameStore.reviewApplication(item.id, 'rejected')
-        uni.showToast({ title: '已拒绝', icon: 'none' })
+        const result = await reviewApplication(item._id, 'reject')
+        if (result.success) {
+          item.status = 'rejected'
+          uni.showToast({ title: '已拒绝', icon: 'none' })
+        } else {
+          uni.showToast({ title: result.message || '操作失败', icon: 'none' })
+        }
       }
     }
   })
 }
 
+// 点击申请人头像 → 跳转用户主页
 const goUserProfile = (item) => {
-  if (!item?.userId) return
-  uni.navigateTo({ url: `/pages/profile/index?uid=${item.userId}` })
+  if (!item?.applicantId) return
+  uni.navigateTo({ url: `/pages/profile/index?uid=${item.applicantId}` })
 }
 </script>
 
@@ -68,23 +94,33 @@ const goUserProfile = (item) => {
     <scroll-view scroll-y class="list-scroll">
       <view class="list-inner">
 
+        <!-- 加载中 -->
+        <view v-if="loading && applications.length === 0" class="empty-state">
+          <text class="empty-text">加载中...</text>
+        </view>
+
         <!-- 空状态 -->
-        <view v-if="applications.length === 0" class="empty-state">
+        <view v-else-if="applications.length === 0" class="empty-state">
           <text class="empty-text">暂无申请，分享招募让更多人看到吧</text>
         </view>
 
         <!-- 申请人条目 -->
         <view
           v-for="item in applications"
-          :key="item.id"
+          :key="item._id"
           class="applicant-item"
         >
           <!-- 左侧：头像 + 昵称 + 申请时间 -->
           <view class="applicant-left" @tap="goUserProfile(item)">
-            <view class="applicant-avatar" />
+            <image
+              v-if="item.applicantAvatar"
+              :src="item.applicantAvatar"
+              mode="aspectFill"
+              class="applicant-avatar-img"
+            />
+            <view v-else class="applicant-avatar" />
             <view class="applicant-info">
-              <text class="applicant-name">{{ item.nickname }}</text>
-              <text class="applicant-time">{{ item.applyTime }}</text>
+              <text class="applicant-name">{{ item.applicantNickname }}</text>
             </view>
           </view>
 
@@ -200,6 +236,13 @@ const goUserProfile = (item) => {
     flex-shrink: 0;
   }
 
+  .applicant-avatar-img {
+    width: 80rpx;
+    height: 80rpx;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
   .applicant-info {
     display: flex;
     flex-direction: column;
@@ -210,11 +253,6 @@ const goUserProfile = (item) => {
       font-size: 30rpx;
       font-weight: 600;
       color: #000000;
-    }
-
-    .applicant-time {
-      font-size: 22rpx;
-      color: #b2b2b2;
     }
   }
 }

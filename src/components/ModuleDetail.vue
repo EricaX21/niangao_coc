@@ -15,6 +15,23 @@ const emit = defineEmits(['tapPublisher'])
 const gameTimeStr = computed(() =>
   formatGameTime(props.module.gameDays, props.module.startTime, props.module.endTime)
 )
+
+// 根据 plCount / recruitKP 拼接招募对象展示文本
+const recruitStr = computed(() => {
+  const parts = []
+  if (props.module.recruitKP) parts.push('1KP')
+  if (props.module.plCount) parts.push(`${props.module.plCount}PL`)
+  return parts.length > 0 ? parts.join(' ') : '待定'
+})
+
+// 从 rule / mode / playerCount 动态生成 tag 数组（云数据库无 tags 字段）
+const tagList = computed(() => {
+  const tags = []
+  if (props.module.mode) tags.push(props.module.mode)
+  if (props.module.rule) tags.push(props.module.rule)
+  if (props.module.playerCount) tags.push(`${props.module.playerCount}人`)
+  return tags
+})
 </script>
 
 <template>
@@ -40,11 +57,11 @@ const gameTimeStr = computed(() =>
         <view class="publisher-row" @tap="emit('tapPublisher', module.creatorId)">
           <view class="publisher-avatar-dot" />
           <text class="label-text">发起人：</text>
-          <text class="publisher-name clickable">{{ module.publisherName }}</text>
+          <text class="publisher-name clickable">{{ module.creatorNickname }}</text>
         </view>
 
         <view class="tags-row">
-          <view class="tag" v-for="tag in module.tags" :key="tag">
+          <view class="tag" v-for="tag in tagList" :key="tag">
             <text class="tag-text">#{{ tag }}</text>
           </view>
         </view>
@@ -56,7 +73,7 @@ const gameTimeStr = computed(() =>
 
         <view class="meta-row">
           <text class="meta-icon">⚔</text>
-          <text class="meta-text">招募对象 {{ module.recruit }}</text>
+          <text class="meta-text">招募对象 {{ recruitStr }}</text>
         </view>
 
         <view class="meta-row">

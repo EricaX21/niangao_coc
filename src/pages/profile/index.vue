@@ -3,6 +3,7 @@
   <view class="page-container">
     <UserProfileContent
       v-if="targetUser"
+      ref="profileContentRef"
       :userInfo="targetUser"
       :isSelf="isSelf"
     />
@@ -14,15 +15,34 @@
 
 <script setup>
 import { ref } from 'vue'
-import { onLoad } from '@dcloudio/uni-app'
+import { onLoad, onShow } from '@dcloudio/uni-app'
 import { useUserStore } from '@/store/user'
 import { getUserByUid } from '@/api/user'
 import { checkLogin } from '@/utils/auth'
+import { safeNavigateBack } from '@/utils/navigation'
 import UserProfileContent from '@/components/UserProfileContent.vue'
 
 const userStore = useUserStore()
 const targetUser = ref(null)
 const isSelf = ref(false)
+const profileContentRef = ref(null)
+
+// 云数据库返回的用户结构（tags 数组 / signature）补齐 UI 依赖的旧字段（isKP/isPL/bio）
+const normalizeUser = (user) => {
+  if (!user) return null
+  const tags = Array.isArray(user.tags) ? user.tags : []
+  return {
+    ...user,
+    isKP: user.isKP ?? tags.includes('KP'),
+    isPL: user.isPL ?? tags.includes('PL'),
+    bio: user.bio || user.signature || '',
+  }
+}
+
+// 从 P6 返回时刷新演绎记录列表
+onShow(() => {
+  profileContentRef.value?.refreshLogs()
+})
 
 onLoad(async (options) => {
   const uid = options?.uid
@@ -31,16 +51,17 @@ onLoad(async (options) => {
   if (userStore.isLoggedIn && userStore.uid === uid) {
     // 本人访问自己主页
     isSelf.value = true
-    targetUser.value = userStore.userInfo
+    targetUser.value = normalizeUser(userStore.userInfo)
   } else {
     // 他人主页 - 触发登录检查
     const ok = await checkLogin(userStore)
     if (!ok) {
-      uni.navigateBack()
+      safeNavigateBack()
       return
     }
     isSelf.value = false
-    targetUser.value = getUserByUid(uid)
+    const data = await getUserByUid(uid)
+    targetUser.value = normalizeUser(data)
   }
 })
 </script>

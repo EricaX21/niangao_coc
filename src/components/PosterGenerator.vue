@@ -1,6 +1,6 @@
 <!-- 海报生成与预览组件 - Canvas 绘制复古邀请函风格海报 -->
 <script setup>
-import { ref, nextTick } from 'vue'
+import { ref, nextTick, getCurrentInstance } from 'vue'
 import { formatGameTime } from '@/utils/formatTime'
 
 const props = defineProps({
@@ -30,6 +30,9 @@ const MIN_HEIGHT = 900
 const showPreview = ref(false)
 const posterImage = ref('')
 const generating = ref(false)
+
+// 组件实例：createSelectorQuery 作用域定位用，必须在 setup 同步阶段获取
+const instance = getCurrentInstance()
 
 // 文字换行函数：返回行数组
 const getWrappedLines = (ctx, text, maxWidth) => {
@@ -115,7 +118,7 @@ defineExpose({ generate })
 // 微信小程序 Canvas 2D 绘制
 const drawPosterWeixin = () => {
   return new Promise((resolve, reject) => {
-    const query = uni.createSelectorQuery().in(getCurrentInstance())
+    const query = uni.createSelectorQuery().in(instance.proxy)
     query.select('#posterCanvas')
       .fields({ node: true, size: true })
       .exec((res) => {

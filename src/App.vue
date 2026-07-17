@@ -1,18 +1,14 @@
 <script>
+import { CLOUD_ENV_ID } from './config.js'
+
 export default {
   onLaunch() {
-    console.log('App Launch')
-    // 检查登录状态
-    const token = uni.getStorageSync('token')
-    if (!token) {
-      console.log('未登录')
-    }
-  },
-  onShow() {
-    console.log('App Show')
-  },
-  onHide() {
-    console.log('App Hide')
+    // #ifdef MP-WEIXIN
+    wx.cloud.init({
+      env: CLOUD_ENV_ID,
+      traceUser: true
+    })
+    // #endif
   },
 }
 </script>

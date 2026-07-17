@@ -4,43 +4,59 @@ import { ref, computed } from 'vue'
 import { onLoad, onShow, onShareAppMessage } from '@dcloudio/uni-app'
 import ModuleDetail from '@/components/ModuleDetail.vue'
 import ShareMenu from '@/components/ShareMenu.vue'
-import { useGameStore } from '@/store/game'
 import { useUserStore } from '@/store/user'
 import { checkLogin } from '@/utils/auth'
-import { getUserByUid } from '@/api/user'
+import { getModuleById, applyModule } from '@/api/module'
 
-const gameStore = useGameStore()
 const userStore = useUserStore()
 
 const moduleId = ref('')
+const currentModule = ref(null)
+const loading = ref(false)
 const showContactModal = ref(false)
 const showShareMenu = ref(false)
 
 onLoad((options) => {
-  moduleId.value = options?.id || '1'
+  moduleId.value = options?.id || ''
 })
 
-// 每次 onShow 时重新读取数据，确保状态同步（发车/审批后返回时及时更新）
+// 每次 onShow 时重新加载数据，确保状态同步（发车/审批后返回时及时更新）
 onShow(() => {
-  // store 已是响应式数据源，computed 自动更新，此处保留 hook 供后端接口替换
+  if (moduleId.value) {
+    loadDetail()
+  }
 })
 
-// 从 store 响应式读取模组
-const currentModule = computed(() =>
-  gameStore.modules.find(m => m.id == moduleId.value) || null
-)
+// 从云函数加载模组详情
+const loadDetail = async () => {
+  loading.value = true
+  try {
+    const data = await getModuleById(moduleId.value)
+    currentModule.value = data
+  } catch (error) {
+    console.error('loadDetail error:', error)
+    currentModule.value = null
+  } finally {
+    loading.value = false
+  }
+}
 
-// 当前用户是否是发布人
-const isCreator = computed(() =>
-  userStore.isLoggedIn && !!moduleId.value && currentModule.value?.creatorId === userStore.uid
-)
+// 当前用户是否是发布人：优先 _openid 比对，兜底 creatorId/uid 比对
+const isCreator = computed(() => {
+  if (!userStore.isLoggedIn || !currentModule.value) return false
+  const mod = currentModule.value
+  // 优先通过 _openid 判断（云数据库文档自带）
+  if (mod._openid && userStore.openid) {
+    return mod._openid === userStore.openid
+  }
+  // 兜底：通过 creatorId（发布时写入的 uid）与当前用户 uid 比对
+  if (mod.creatorId && userStore.uid) {
+    return mod.creatorId === userStore.uid
+  }
+  return false
+})
 
-// 当前用户对该模组的申请记录
-const myApplication = computed(() =>
-  gameStore.myApplicationForModule(moduleId.value, userStore.uid)
-)
-
-// 联系方式：审批通过后显示
+// 联系方式：云函数已做权限控制，contact 为 null 时不可见
 const contactInfo = computed(() => {
   const c = currentModule.value?.contact
   if (!c) return '暂无联系方式'
@@ -52,8 +68,11 @@ const contactInfo = computed(() => {
 
 // 发布人信息（用于海报生成）
 const creatorInfo = computed(() => {
-  if (!currentModule.value?.creatorId) return {}
-  return getUserByUid(currentModule.value.creatorId) || {}
+  if (!currentModule.value) return {}
+  return {
+    nickname: currentModule.value.creatorNickname || '',
+    avatar: currentModule.value.creatorAvatar || ''
+  }
 })
 
 /**
@@ -67,13 +86,15 @@ const creatorInfo = computed(() => {
  */
 const btnState = computed(() => {
   if (!currentModule.value) return 'none'
+  const appStatus = currentModule.value.myApplicationStatus
+
   // 已发车但已通过审核的申请人仍可查看联系方式
   if (currentModule.value.status === 'finished') {
-    if (myApplication.value?.status === 'approved') return 'finished_approved'
+    if (appStatus === 'approved') return 'finished_approved'
     return 'finished'
   }
   if (isCreator.value) return 'creator'
-  return myApplication.value?.status || 'none'
+  return appStatus || 'none'
 })
 
 // 点击申请加入
@@ -82,18 +103,22 @@ const handleApply = async () => {
   if (!ok) return
 
   // 乐观锁：申请前再次确认模组状态
-  const mod = gameStore.modules.find(m => m.id == moduleId.value)
-  if (!mod || mod.status === 'finished') {
+  if (!currentModule.value || currentModule.value.status === 'finished') {
     uni.showToast({ title: '该招募已发车，无法申请', icon: 'none' })
     return
   }
 
-  // 提交申请
-  gameStore.applyToModule(moduleId.value, {
-    uid: userStore.uid,
-    nickname: userStore.nickname,
-  })
-  uni.showToast({ title: '申请已提交', icon: 'success' })
+  const result = await applyModule(currentModule.value._id)
+  if (result.success) {
+    uni.showToast({ title: '申请已提交', icon: 'success' })
+    // 刷新页面数据，更新按钮状态
+    const updated = await getModuleById(currentModule.value._id)
+    if (updated) {
+      currentModule.value = updated
+    }
+  } else {
+    uni.showToast({ title: result.message || '申请失败', icon: 'none' })
+  }
 }
 
 // 发布人点击灰色「申请加入」按钮的提示
@@ -115,7 +140,7 @@ const goManage = () => {
 }
 
 onShareAppMessage(() => ({
-  title: currentModule.value?.name || '来看看这个跑团招募',
+  title: currentModule.value?.title || '来看看这个跑团招募',
   path: `/pages/home/detail?id=${moduleId.value}`,
 }))
 </script>
@@ -123,29 +148,43 @@ onShareAppMessage(() => ({
 <template>
   <view class="page-container">
 
-    <!-- 页面内容区 -->
-    <scroll-view scroll-y class="scroll-area">
+    <!-- 加载中 -->
+    <view v-if="loading && !currentModule" class="loading-state">
+      <text class="loading-text">加载中...</text>
+    </view>
 
-      <!-- 标题行：模组名称 + 分享/管理 -->
+    <!-- 页面内容区 -->
+    <scroll-view v-else scroll-y class="scroll-area">
+
+      <!-- 标题行：模组名称 + 分享按钮 -->
       <view class="title-row" v-if="currentModule">
-        <text class="module-title">{{ currentModule.name }}</text>
+        <text class="module-title">{{ currentModule.title }}</text>
         <view class="title-actions">
           <view class="share-btn" @tap="showShareMenu = true">
             <text class="share-btn-text">📤</text>
           </view>
-          <text v-if="isCreator" class="manage-link" @tap="goManage">管理招募</text>
         </view>
       </view>
 
       <!-- 模组信息（共用组件） -->
       <ModuleDetail v-if="currentModule" :module="currentModule" @tapPublisher="goCreatorProfile" />
 
+      <!-- 发布人视角：管理招募入口，位于简介下方、底部按钮上方 -->
+      <view v-if="isCreator" class="manage-link-row" @tap="goManage">
+        <text class="manage-link">管理招募 ›</text>
+      </view>
+
+      <!-- 空状态 -->
+      <view v-if="!currentModule && !loading" class="empty-state">
+        <text class="empty-text">模组不存在或已被删除</text>
+      </view>
+
       <!-- 底部留白，防止吸底按钮遮挡内容 -->
       <view class="bottom-placeholder" />
     </scroll-view>
 
     <!-- 底部吸底按钮 -->
-    <view class="bottom-bar">
+    <view class="bottom-bar" v-if="currentModule">
       <!-- 已发车 + 已通过：仍可查看联系方式 -->
       <view v-if="btnState === 'finished_approved'" class="apply-btn apply-btn--approved" @tap="showContactModal = true">
         <text class="apply-btn-text">✓ 已通过 · 已发车</text>
@@ -211,6 +250,33 @@ onShareAppMessage(() => ({
   flex: 1;
 }
 
+/* 加载状态 */
+.loading-state {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 200rpx 0;
+}
+
+.loading-text {
+  font-size: 28rpx;
+  color: #b2b2b2;
+}
+
+/* 空状态 */
+.empty-state {
+  padding: 200rpx 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.empty-text {
+  font-size: 28rpx;
+  color: #b2b2b2;
+}
+
 /* 标题行 */
 .title-row {
   display: flex;
@@ -251,10 +317,17 @@ onShareAppMessage(() => ({
   font-size: 36rpx;
 }
 
+.manage-link-row {
+  padding: 24rpx 32rpx;
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-end;
+  box-sizing: border-box;
+}
+
 .manage-link {
-  font-size: 26rpx;
-  color: $text-secondary;
-  text-decoration: underline;
+  font-size: 28rpx;
+  color: #363636;
 }
 
 .bottom-placeholder {
