@@ -22,7 +22,7 @@ exports.main = async (event, context) => {
       // 老用户：直接返回用户信息
       const user = queryResult.data[0]
       return {
-        code: 0,
+        success: true,
         message: 'login_success',
         data: user
       }
@@ -57,7 +57,7 @@ exports.main = async (event, context) => {
       .get()
 
     return {
-      code: 0,
+      success: true,
       message: 'register_success',
       data: createdUser.data[0]
     }
@@ -65,7 +65,7 @@ exports.main = async (event, context) => {
   } catch (error) {
     console.error('user-login error:', error)
     return {
-      code: -1,
+      success: false,
       message: error.message || '登录失败',
       data: null
     }

@@ -3,7 +3,7 @@
  */
 import { mockUsers } from '../utils/mockData'
 
-// 调用 user-login 云函数，返回 { code, message, data }
+// 调用 user-login 云函数，返回 { success, message, data }
 export async function loginByCloud() {
   const result = await wx.cloud.callFunction({ name: 'user-login' })
   return result.result

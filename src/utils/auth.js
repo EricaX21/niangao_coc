@@ -43,10 +43,9 @@ export async function checkLogin(userStore, callback) {
             })
 
             const response = result.result
-            if (response.code === 0 || response.success === true) {
+            if (response.success === true) {
               // 登录成功：将用户信息存入 store
-              const userData = response.data || response.user
-              userStore.setUser(userData)
+              userStore.setUser(response.data)
               if (typeof callback === 'function') callback()
               resolve(true)
             } else {
