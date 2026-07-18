@@ -1,6 +1,6 @@
 # 跑团组局小程序 - CLAUDE.md
 
-> **当前 PRD：prd_v1_3.md（唯一权威需求源，页面结构、字段定义、跳转关系等以 PRD 为准）**
+> **当前 PRD：prd_v1_4.md；但 V1.5 方向已大改（首页即编辑器、插件定位、弹性时间），PRD 尚未同步——页面结构与交互以本文件和《粘贴识别规则手册.md》为准，PRD 更新在待办中**
 
 ## ⚠️ 重要说明
 本项目是 TRPG 跑团（桌游/角色扮演游戏）**组局**小程序，不是跑腿外卖。
@@ -24,35 +24,40 @@
 
 ## 当前页面与组件清单
 
-### 页面（10 个）
+### 页面（12 个，V1.5 首页改版后）
 | 页面 | 路径 | 状态 |
 |---|---|---|
-| P1 招募大厅 | pages/home/index | ✅ TabBar Tab1 |
+| P0 发车编辑器（首页）| pages/publish/index | ✅ TabBar Tab1，工作区 + 吸顶工具栏（粘贴识别/逛大厅） |
+| P0b 发车成功页 | pages/publish/result | ✅ 发布后直出卡片，非 TabBar |
+| P1 招募大厅 | pages/home/index | ✅ 非 TabBar，从首页「逛大厅」进入，纯浏览无筛选 |
 | P2 招募详情页 | pages/home/detail | ✅ |
-| P3 发布/编辑表单 | pages/publish/form | ✅ 非 TabBar 页面 |
+| P3 编辑招募页 | pages/publish/form | ✅ 非 TabBar，仅编辑场景（带 ?id=），新建走首页 |
 | P4 用户主页 | pages/profile/index | ✅ 支持本人/他人视角 |
 | P5 编辑个人资料 | pages/profile/edit | ✅ |
 | P6 演绎记录详情 | pages/profile/log_detail | ✅ |
 | P7 我的（Tab2 壳页面）| pages/mine/index | ✅ TabBar Tab2 |
-| P8 我的创建/申请/足迹 | pages/mine/created | ✅ tab 参数区分 |
+| P8 我的创建/申请 | pages/mine/created | ✅ tab 参数区分；草稿点击载回首页工作区、可删除 |
 | P9 发布人详情页 | pages/mine/detail | ✅ |
 | P10 审核页 | pages/mine/review | ✅ |
 
 ### 公共组件
 | 组件 | 用途 |
 |---|---|
+| ModuleForm.vue | 招募表单主体（首页工作区与编辑页共用；工作区本地持久化、粘贴识别、存草稿/清空/载回草稿） |
 | ModuleDetail.vue | 共用模组信息展示 |
 | UserProfileContent.vue | 共用用户资料（本人/他人视角） |
 | ShareMenu.vue | 分享菜单（转发好友 + 生成海报入口） |
 | PosterGenerator.vue | Canvas 海报生成 + 预览 + 保存相册 |
 
 ### 核心架构
-- mock 数据统一在 `src/utils/mockData.js`，通过 `src/api/` 层访问（`api/module.js`、`api/user.js`、`api/log.js`），页面和 store 禁止直接 import mockData
-- Store：`store/game.js`（含 departModule 自动拒绝逻辑）、`store/user.js`
-- 路由配置：`pages.json`，`tabBar.custom: true`
-- 自定义 TabBar：`src/custom-tab-bar/`（原生微信组件）
+- 数据通过 `src/api/` 层访问云函数（`api/module.js`、`api/user.js`、`api/log.js`），页面和 store 禁止直接调 wx.cloud
+- 云函数 16 个在 `cloudfunctions/`，构建后需复制到 `dist/build/mp-weixin/cloudfunctions/`（每次构建会清空输出目录，需重拷）
+- Store：`store/game.js`（editingModuleId / pendingDraftId 用于 switchTab 传参）、`store/user.js`
+- 路由配置：`pages.json`，`tabBar.custom: true`，两个 tab：pages/publish/index（首页）+ pages/mine/index
+- 自定义 TabBar：`src/custom-tab-bar/`（原生微信组件，无中间凸起按钮）
 - 登录工具：`src/utils/auth.js` 的 `checkLogin()` 方法
-- 时间格式化：`src/utils/formatTime.js` 的 `formatGameTime()`
+- 时间格式化：`src/utils/formatTime.js` 的 `formatGameTime()`（弹性时间四态渲染：留空即待商量）
+- 粘贴识别：`src/utils/parseRecruitText.js`（规则版解析器），规则与样本见《粘贴识别规则手册.md》，回归测试 `npm run test:parse`
 
 ---
 
@@ -107,9 +112,8 @@
 
 ### TabBar 规范
 - 使用自定义 TabBar（`src/custom-tab-bar/`），不用微信原生样式
-- 三个视觉位：招募大厅（tab 页）、发布（中间按钮，非 tab 页）、我的（tab 页）
-- 中间按钮用 `uni.navigateTo` 跳转 `pages/publish/form`
-- 每个 tab 页面 `onShow` 中调用 `getTabBar().setData({ selected: N })` 更新选中态
+- 两个 tab：发车（pages/publish/index，首页/编辑器）、我的（pages/mine/index）；无中间凸起按钮
+- 每个 tab 页面 `onShow` 中经 `getCurrentPages()` 取页面实例调 `page.getTabBar().setData({ selected: N })` 更新选中态（getTabBar 不是全局函数）
 - `pages.json` 中 `tabBar.custom: true`，`list` 仍需声明所有 tab 页面路径
 
 ### 注释规范
@@ -174,9 +178,9 @@ $bg-image-placeholder: #d9d9d9; // 图片占位
 
 ### 登录规范
 - 无独立登录页，授权通过 `checkLogin()` + wx.login 弹窗触发
-- 游客可浏览招募大厅和详情页
-- 触发登录的操作：申请加入、进入「我的」Tab、点击发布按钮、点击他人头像进入主页
-- MVP 阶段授权后注入 mockData 用户数据
+- 游客可浏览首页编辑器（可随意填写）、招募大厅和详情页
+- 触发登录的操作：点「发车」/「存草稿」、申请加入、进入「我的」Tab、点击他人头像进入主页
+- 登录走 user-login 云函数，云数据库 users 集合
 
 ### 新建页面默认模板
 ```vue
@@ -199,5 +203,7 @@ $bg-image-placeholder: #d9d9d9; // 图片占位
 ---
 
 ## 待办事项
-- [ ] 海报样式真机调试与微调
-- [ ] 后端接口接入替换 mock 数据
+- [ ] 海报/卡片排版重设计（产品方要重做，当前复古邀请函样式仅占位）
+- [ ] module-delete 云函数部署（开发者工具右键上传，未部署时删草稿报「函数不存在」）
+- [ ] PRD 更新至 V1.5 方向（首页即编辑器/插件定位/弹性时间，方向备忘见 .claude/plans/）
+- [ ] 双人真机联调（V1.4联调测试清单.md，尚未执行）
