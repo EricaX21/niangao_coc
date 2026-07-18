@@ -8,7 +8,9 @@ import { parseRecruitText } from '@/utils/parseRecruitText'
 
 const props = defineProps({
   // 有值即编辑模式（云数据库 _id），为空则是新建模式
-  editId: { type: String, default: '' }
+  editId: { type: String, default: '' },
+  // 宿主页面是否为 tab 页：自定义 TabBar 悬浮在页面之上，吸底按钮需抬高避让
+  inTabPage: { type: Boolean, default: false }
 })
 
 // 提交成功后由页面决定去哪：新建发布 → 结果页，编辑保存 → 返回上一页
@@ -631,7 +633,7 @@ defineExpose({ resetForm, loadDraft, pasteRecognize: handlePasteRecognize })
     </scroll-view>
 
     <!-- 底部吸底按钮：工作区/编辑草稿双按钮，编辑已发布招募时只剩「保存」 -->
-    <view class="bottom-bar">
+    <view class="bottom-bar" :class="{ 'bottom-bar--tab': inTabPage }">
       <view class="btn-row">
         <view v-if="showDraftButton" class="action-btn btn-secondary" @tap="handleSaveDraft">
           <text class="action-btn-text">存草稿</text>
@@ -952,6 +954,12 @@ defineExpose({ resetForm, loadDraft, pasteRecognize: handlePasteRecognize })
   border-top: 1rpx solid #EEEEEE;
   box-shadow: 0 -2rpx 10rpx rgba(0, 0, 0, 0.05);
   box-sizing: border-box;
+
+  /* tab 页内：自定义 TabBar（56px + 安全区）悬浮在页面之上，按钮抬高避让，否则被整个盖住 */
+  &.bottom-bar--tab {
+    bottom: calc(112rpx + env(safe-area-inset-bottom));
+    padding-bottom: 20rpx;
+  }
 
   .btn-row {
     display: flex;

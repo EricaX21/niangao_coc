@@ -4,7 +4,7 @@
 import { ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { useUserStore } from '@/store/user'
-import { getLogById, createLog, updateLog } from '@/api/log'
+import { getLogById, createLog, updateLog, deleteLog } from '@/api/log'
 import { safeNavigateBack } from '@/utils/navigation'
 
 const userStore = useUserStore()
@@ -106,6 +106,27 @@ const handleSave = async () => {
     // 编辑已有记录，保存后恢复浏览态
     isEditing.value = false
   }
+}
+
+// 删除记录：破坏性操作二次确认，成功后返回上一页（P4/P7 onShow 会刷新列表）
+const handleDelete = () => {
+  uni.showModal({
+    title: '删除这条演绎记录？',
+    content: '删除后不可恢复',
+    confirmText: '删除',
+    success: async (res) => {
+      if (!res.confirm) return
+      uni.showLoading({ title: '删除中...', mask: true })
+      const result = await deleteLog(logId.value)
+      uni.hideLoading()
+      if (result.success) {
+        uni.showToast({ title: '已删除', icon: 'none' })
+        setTimeout(() => safeNavigateBack(), 1200)
+      } else {
+        uni.showToast({ title: result.message || '删除失败', icon: 'none' })
+      }
+    }
+  })
 }
 </script>
 
@@ -238,10 +259,15 @@ const handleSave = async () => {
         <text class="bottom-btn-text">保存</text>
       </view>
     </view>
-    <!-- 本人浏览态：编辑按钮 -->
+    <!-- 本人浏览态：删除 + 编辑双按钮 -->
     <view v-else-if="isSelf" class="bottom-bar">
-      <view class="bottom-btn" @tap="handleEdit">
-        <text class="bottom-btn-text">编辑</text>
+      <view class="btn-row">
+        <view class="bottom-btn btn-delete" @tap="handleDelete">
+          <text class="btn-delete-text">删除</text>
+        </view>
+        <view class="bottom-btn btn-main" @tap="handleEdit">
+          <text class="bottom-btn-text">编辑</text>
+        </view>
       </view>
     </view>
     <!-- 他人浏览态：无按钮 -->
@@ -269,6 +295,12 @@ const handleSave = async () => {
   border-top: 1rpx solid #eeeeee;
   box-sizing: border-box;
 
+  .btn-row {
+    display: flex;
+    flex-direction: row;
+    gap: 16rpx;
+  }
+
   .bottom-btn {
     height: 88rpx;
     border-radius: 16rpx;
@@ -281,6 +313,21 @@ const handleSave = async () => {
       font-size: 32rpx;
       font-weight: 600;
       color: #ffffff;
+    }
+  }
+
+  /* 浏览态双按钮：删除为浅色次按钮，编辑为主按钮 */
+  .btn-row .bottom-btn {
+    flex: 1;
+  }
+
+  .btn-delete {
+    background-color: #e8e8e8;
+
+    .btn-delete-text {
+      font-size: 32rpx;
+      font-weight: 600;
+      color: #363636;
     }
   }
 }

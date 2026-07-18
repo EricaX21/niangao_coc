@@ -59,6 +59,24 @@ export async function updateLog(logId, updateData) {
 }
 
 /**
+ * 删除演绎记录（云函数版，仅限本人的记录）
+ * @param {string} logId - 记录的云数据库 _id
+ * @returns {Promise<{success: boolean, message?: string}>}
+ */
+export async function deleteLog(logId) {
+  try {
+    const result = await wx.cloud.callFunction({
+      name: 'log-delete',
+      data: { logId }
+    })
+    return result.result
+  } catch (error) {
+    console.error('deleteLog error:', error)
+    return { success: false, message: '删除失败，请重试' }
+  }
+}
+
+/**
  * 获取单条演绎记录（logs 集合所有人可读，直接前端查库）
  * @param {string} logId - 记录的 _id
  * @returns {Promise<Object|null>}

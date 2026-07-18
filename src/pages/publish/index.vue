@@ -65,6 +65,7 @@ const handleDraftSaved = () => {
 
     <ModuleForm
       ref="moduleFormRef"
+      in-tab-page
       @published="handlePublished"
       @draft-saved="handleDraftSaved"
     />
