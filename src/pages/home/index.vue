@@ -1,6 +1,6 @@
-<!-- 招募大厅首页 - 浅灰背景，展示招募卡片列表，支持搜索和标签筛选 -->
+<!-- 招募大厅 - 从首页编辑器的「看看别人怎么做」入口进入，纯浏览参考区 -->
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { getModuleList } from '@/api/module'
 import { formatGameTime } from '@/utils/formatTime'
@@ -22,111 +22,23 @@ const buildTags = (item) => {
   return tags
 }
 
-// 每次 onShow 时重新加载数据并更新 TabBar 选中态
+// 大厅已不是 tab 页（从首页编辑器的入口跳入），只需每次显示时重新拉取列表
 onShow(() => {
-  const pages = getCurrentPages()
-  const page = pages[pages.length - 1]
-  if (typeof page?.getTabBar === 'function') {
-    page.getTabBar()?.setData({ selected: 0 })
-  }
   loadModules()
 })
 
-const searchKeyword = ref('')
 const loading = ref(false)
 const list = ref([])
 
-// 筛选 tag 平铺排列，支持多选
-const filterTags = ['COC', 'DND', '其他', 'KP', 'PL', 'DM', '语音', '文字']
-
-// 维度映射（代码内部用，UI 上不体现分组）
-const FILTER_DIMS = {
-  rule: ['COC', 'DND', '其他'],
-  target: ['KP', 'PL', 'DM'],
-  mode: ['语音', '文字'],
-}
-
-// 选中状态：存所有被选中的 tag
-const selectedFilters = ref([])
-
-const toggleFilter = (tag) => {
-  const idx = selectedFilters.value.indexOf(tag)
-  if (idx >= 0) {
-    selectedFilters.value.splice(idx, 1)
-  } else {
-    selectedFilters.value.push(tag)
-  }
-}
-
-const hasActiveFilter = computed(() => selectedFilters.value.length > 0)
-
-// 将前端 tag 选择转换为云函数期望的 filters 参数
-const buildCloudFilters = () => {
-  const filters = {}
-  const sel = selectedFilters.value
-
-  // 规则体系维度
-  const ruleTags = FILTER_DIMS.rule.filter(t => sel.includes(t))
-  if (ruleTags.length > 0) {
-    // "其他"在云函数端不好用正则排除，这里只传 COC/DND，"其他"需特殊处理
-    // 云函数 rules 只支持 startsWith 正则匹配，"其他"无法通过 rules 实现
-    // 如果只选了"其他"，不传 rules（由前端本地过滤）
-    const cloudRules = ruleTags.filter(t => t !== '其他')
-    if (cloudRules.length > 0) {
-      filters.rules = cloudRules
-    }
-  }
-
-  // 招募对象维度
-  const targetTags = FILTER_DIMS.target.filter(t => sel.includes(t))
-  if (targetTags.length > 0) {
-    filters.targets = targetTags
-  }
-
-  // 跑团方式维度
-  const modeTags = FILTER_DIMS.mode.filter(t => sel.includes(t))
-  if (modeTags.length > 0) {
-    filters.modes = modeTags
-  }
-
-  return filters
-}
-
-// 是否需要前端本地过滤"其他"规则
-const needLocalOtherFilter = computed(() => {
-  const ruleTags = FILTER_DIMS.rule.filter(t => selectedFilters.value.includes(t))
-  // 只有选了"其他"且没有选 COC/DND 时，需要前端过滤
-  return ruleTags.includes('其他') && ruleTags.length === 1
-})
-
-// 从云函数加载数据
+/**
+ * 大厅定位是「看看别人怎么做」的参考区，不是搜索型信息流。
+ * 原搜索栏 + 8 个筛选 tag 已移除（那套是电商骨架），只保留一种排序。
+ */
 const loadModules = async () => {
   loading.value = true
   try {
-    const filters = buildCloudFilters()
-    const result = await getModuleList(filters)
-    let data = result.data || []
-
-    // 前端搜索过滤（云函数不支持模糊搜索）
-    if (searchKeyword.value) {
-      const kw = searchKeyword.value.toLowerCase()
-      data = data.filter(item =>
-        (item.title && item.title.toLowerCase().includes(kw)) ||
-        (item.creatorNickname && item.creatorNickname.toLowerCase().includes(kw)) ||
-        (item.rule && item.rule.toLowerCase().includes(kw)) ||
-        (item.mode && item.mode.toLowerCase().includes(kw)) ||
-        (item.intro && item.intro.toLowerCase().includes(kw))
-      )
-    }
-
-    // "其他"规则的前端过滤：排除 COC 和 DND 开头的
-    if (needLocalOtherFilter.value) {
-      data = data.filter(item =>
-        item.rule && !item.rule.startsWith('COC') && !item.rule.startsWith('DND')
-      )
-    }
-
-    list.value = data
+    const result = await getModuleList({})
+    list.value = result.data || []
   } catch (error) {
     console.error('loadModules error:', error)
     list.value = []
@@ -135,20 +47,6 @@ const loadModules = async () => {
   }
 }
 
-// 筛选条件变化时重新加载
-watch(selectedFilters, () => {
-  loadModules()
-}, { deep: true })
-
-// 搜索关键词变化时重新加载（防抖）
-let searchTimer = null
-watch(searchKeyword, () => {
-  clearTimeout(searchTimer)
-  searchTimer = setTimeout(() => {
-    loadModules()
-  }, 300)
-})
-
 const goDetail = (item) => {
   uni.navigateTo({ url: `/pages/home/detail?id=${item._id}` })
 }
@@ -156,42 +54,6 @@ const goDetail = (item) => {
 
 <template>
   <view class="page">
-
-    <!-- 顶部区域：搜索 + 筛选，统一横向 padding -->
-    <view class="top-area">
-      <!-- 搜索栏 -->
-      <view class="search-bar">
-        <view class="search-wrap">
-          <input
-            v-model="searchKeyword"
-            placeholder="模组名称"
-            placeholder-class="search-placeholder"
-            class="search-input"
-            maxlength="30"
-          />
-          <view class="search-funnel-dot" />
-        </view>
-      </view>
-
-      <!-- 筛选标签行（平铺多选） -->
-      <view class="filter-row">
-        <!-- 漏斗色块占位 -->
-        <view class="filter-funnel-dot" />
-        <scroll-view scroll-x="true" class="filter-scroll">
-          <view class="filter-inner">
-            <view
-              class="filter-tag"
-              v-for="tag in filterTags"
-              :key="tag"
-              :class="{ active: selectedFilters.includes(tag) }"
-              @tap="toggleFilter(tag)"
-            >
-              <text class="filter-tag-text">{{ tag }}</text>
-            </view>
-          </view>
-        </scroll-view>
-      </view>
-    </view>
 
     <!-- 招募卡片列表 -->
     <scroll-view scroll-y class="list-scroll">
@@ -202,7 +64,7 @@ const goDetail = (item) => {
         </view>
         <!-- 空状态 -->
         <view v-else-if="list.length === 0" class="empty-state">
-          <text class="empty-text">{{ hasActiveFilter || searchKeyword ? '没有找到符合条件的招募' : '暂无招募，快去发布第一个吧' }}</text>
+          <text class="empty-text">暂无招募，快去发布第一个吧</text>
         </view>
         <view
           class="card"
@@ -285,96 +147,6 @@ const goDetail = (item) => {
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
-}
-
-/* 顶部区域统一横向 padding */
-.top-area {
-  padding: 0 32rpx;
-  box-sizing: border-box;
-}
-
-/* 搜索栏 */
-.search-bar {
-  padding: 16rpx 0 8rpx;
-
-  .search-wrap {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-    height: 64rpx;
-    background-color: #f5f5f5;
-    border: 1rpx solid #d9d9d9;
-    border-radius: 999rpx;
-    padding: 0 16rpx 0 24rpx;
-
-    .search-input {
-      flex: 1;
-      font-size: 26rpx;
-      color: #363636;
-      height: 64rpx;
-      min-width: 0;
-    }
-
-    .search-funnel-dot {
-      flex-shrink: 0;
-      width: 32rpx;
-      height: 32rpx;
-      background-color: #666666;
-      border-radius: 50%;
-    }
-  }
-}
-
-/* 筛选标签行 */
-.filter-row {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  padding: 0 0 8rpx;
-  gap: 8rpx;
-
-  /* 漏斗色块占位 */
-  .filter-funnel-dot {
-    flex-shrink: 0;
-    width: 32rpx;
-    height: 32rpx;
-    background-color: #666666;
-    border-radius: 50%;
-  }
-
-  .filter-scroll {
-    flex: 1;
-    white-space: nowrap;
-
-    .filter-inner {
-      display: inline-flex;
-      flex-direction: row;
-      align-items: center;
-      gap: 8rpx;
-
-      .filter-tag {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        height: 32rpx;
-        background-color: #434343;
-        border-radius: 999rpx;
-        padding: 0 16rpx;
-        flex-shrink: 0;
-
-        &.active {
-          background-color: #2c2c2c;
-        }
-
-        .filter-tag-text {
-          font-size: 22rpx;
-          color: #ffffff;
-          line-height: 32rpx;
-        }
-      }
-    }
-  }
 }
 
 /* 卡片列表滚动区 */

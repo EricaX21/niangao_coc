@@ -179,7 +179,7 @@ function handleLogout() {
     success: (res) => {
       if (res.confirm) {
         userStore.logout()
-        uni.switchTab({ url: '/pages/home/index' })
+        uni.switchTab({ url: '/pages/publish/index' })
       }
     },
   })

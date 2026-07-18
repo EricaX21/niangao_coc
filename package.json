@@ -1,12 +1,13 @@
 {
   "name": "paotuan",
   "version": "1.0.0",
-  "description": "跑腿小程序 - uni-app + Vue3 + Vite + Pinia",
+  "description": "TRPG 跑团组局小程序 - uni-app + Vue3 + Vite + Pinia",
   "scripts": {
     "dev:mp-weixin": "uni -p mp-weixin",
     "build:mp-weixin": "uni build -p mp-weixin",
     "dev:h5": "uni",
-    "build:h5": "uni build"
+    "build:h5": "uni build",
+    "test:parse": "node scripts/test-parse.mjs"
   },
   "dependencies": {
     "@dcloudio/uni-app": "3.0.0-4080720251210001",

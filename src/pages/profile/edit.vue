@@ -329,16 +329,16 @@ const handleSave = async () => {
   &.active {
     background-color: $bg-tag;
     border-color: $bg-tag;
+
+    .gender-tag-text {
+      color: $white;
+    }
   }
 }
 
 .gender-tag-text {
   font-size: 26rpx;
   color: $text-secondary;
-
-  .active & {
-    color: $white;
-  }
 }
 
 /* 身份多选 */
@@ -362,6 +362,10 @@ const handleSave = async () => {
   &.active {
     background-color: $bg-tag;
     border-color: $bg-tag;
+
+    .identity-tag-text {
+      color: $white;
+    }
   }
 }
 
@@ -369,10 +373,6 @@ const handleSave = async () => {
   font-size: 26rpx;
   font-weight: 600;
   color: $text-secondary;
-
-  .active & {
-    color: $white;
-  }
 }
 
 /* 联系方式 */
@@ -394,16 +394,16 @@ const handleSave = async () => {
 
   &.active {
     background-color: #434343;
+
+    .contact-type-text {
+      color: #ffffff;
+    }
   }
 }
 
 .contact-type-text {
   font-size: 26rpx;
   color: #363636;
-
-  .active & {
-    color: #ffffff;
-  }
 }
 
 .contact-input {

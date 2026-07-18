@@ -8,9 +8,6 @@ Component({
       const index = parseInt(e.currentTarget.dataset.index)
       this.setData({ selected: index })
       wx.switchTab({ url: path })
-    },
-    goPublish() {
-      wx.navigateTo({ url: '/pages/publish/form' })
     }
   }
 })

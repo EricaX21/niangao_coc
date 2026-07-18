@@ -1,5 +1,5 @@
 /**
- * 页面栈首页时安全返回：栈深 > 1 则 navigateBack，否则跳招募大厅
+ * 页面栈首页时安全返回：栈深 > 1 则 navigateBack，否则回首页（编辑器 tab）
  * 避免 navigateBack:fail cannot navigate back at first page 报错
  */
 export function safeNavigateBack() {
@@ -7,6 +7,6 @@ export function safeNavigateBack() {
   if (pages.length > 1) {
     uni.navigateBack()
   } else {
-    uni.switchTab({ url: '/pages/home/index' })
+    uni.switchTab({ url: '/pages/publish/index' })
   }
 }

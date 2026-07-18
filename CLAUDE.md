@@ -65,6 +65,7 @@
 - **数据字段注意**：招募 PL 人数字段名是 `plCount`（不是 `recruitPL`）
 - **跑团时间字段**：使用 `gameDays`（数组）+ `startTime` + `endTime`（HH:mm），展示调用 `formatGameTime()`；旧 `time` 字符串字段已废弃
 - **联系方式数据结构**：统一为 `contact: { type: 'qq'|'wx'|'qqgroup', value: '' }`，用户资料和招募模组均使用此结构
+- **SCSS 禁用 `.active &` 写法**：`&` 展开为完整嵌套路径，外层一旦套着父选择器就会编译出永不匹配的选择器（如 `.active .invite-item .invite-type-text`，要求 .active 是祖先而实际是子孙）——这是 P3 联系方式选中态白字失效多轮未修复的根因。选中态样式一律写 `&.active .子类名`
 
 ---
 

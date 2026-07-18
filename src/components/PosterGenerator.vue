@@ -218,7 +218,8 @@ const drawContent = (ctx, totalHeight, introLines) => {
   ctx.fillStyle = COLORS.title
   // 名称可能较长，需换行
   ctx.textAlign = 'left'
-  const titleLines = getWrappedLines(ctx, mod.name || '未命名模组', CONTENT_WIDTH)
+  // 云数据库字段是 title，mock 数据曾用 name，两者都兼容
+  const titleLines = getWrappedLines(ctx, mod.title || mod.name || '未命名模组', CONTENT_WIDTH)
   for (const line of titleLines) {
     const tw = ctx.measureText(line).width
     ctx.fillText(line, (POSTER_WIDTH - tw) / 2, y)
@@ -273,10 +274,13 @@ const drawContent = (ctx, totalHeight, introLines) => {
   ctx.textAlign = 'left'
   ctx.font = '14px sans-serif'
 
+  // 字段名以云数据库为准（creatorNickname / playerCount），mock 时期的旧字段作兜底
+  const hostName = creator.nickname || mod.creatorNickname || mod.publisherName || '未知'
+  const totalCount = mod.playerCount || mod.totalCount
   const infoItems = [
-    { dot: '●', label: '主持人', value: creator.nickname || mod.publisherName || '未知' },
+    { dot: '●', label: '主持人', value: hostName },
     { dot: '●', label: '时间', value: formatGameTime(mod.gameDays, mod.startTime, mod.endTime) },
-    { dot: '●', label: '招募', value: `${mod.totalCount || '?'}人 · 招${mod.recruitKP ? 'KP+' : ''}PL` },
+    { dot: '●', label: '招募', value: `${totalCount || '?'}人 · 招${mod.recruitKP ? 'KP+' : ''}PL` },
   ]
 
   for (const item of infoItems) {

@@ -15,6 +15,8 @@ export const useGameStore = defineStore('game', {
     applications: JSON.parse(JSON.stringify(getApplicationList())),
     // 编辑模式：从发布人详情页 switchTab 到发布页时，通过此字段传递要编辑的模组 id
     editingModuleId: null,
+    // 草稿箱 → 首页工作区：switchTab 不能带参数，通过此字段传递要载入的草稿 id
+    pendingDraftId: null,
   }),
 
   getters: {
@@ -176,6 +178,16 @@ export const useGameStore = defineStore('game', {
     /** 发布页读取完编辑 id 后清除，避免再次进入 tab 时重复回填 */
     clearEditingModuleId() {
       this.editingModuleId = null
+    },
+
+    /** 设置待载入工作区的草稿 id（草稿箱 → switchTab 到首页时使用） */
+    setPendingDraftId(id) {
+      this.pendingDraftId = id
+    },
+
+    /** 首页读取完草稿 id 后清除，避免再次进入 tab 时重复载入 */
+    clearPendingDraftId() {
+      this.pendingDraftId = null
     },
 
     /**

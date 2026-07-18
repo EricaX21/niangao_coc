@@ -94,6 +94,24 @@ export async function updateModule(moduleId, updateData) {
 }
 
 /**
+ * 删除草稿（云函数版，仅限本人的 draft 状态记录）
+ * @param {string} moduleId - 模组的云数据库 _id
+ * @returns {Promise<{success: boolean, message: string}>}
+ */
+export async function deleteModule(moduleId) {
+  try {
+    const result = await wx.cloud.callFunction({
+      name: 'module-delete',
+      data: { moduleId }
+    })
+    return result.result
+  } catch (error) {
+    console.error('deleteModule error:', error)
+    return { success: false, message: '删除失败，请重试' }
+  }
+}
+
+/**
  * 申请加入招募（云函数版）
  * @param {string} moduleId - 模组的云数据库 _id
  * @returns {Promise<{success: boolean, message: string}>}

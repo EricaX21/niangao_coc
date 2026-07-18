@@ -4,6 +4,12 @@
   },
   "pages": [
     {
+      "path": "pages/publish/index",
+      "style": {
+        "navigationBarTitleText": "发车"
+      }
+    },
+    {
       "path": "pages/home/index",
       "style": {
         "navigationBarTitleText": "招募大厅"
@@ -18,7 +24,13 @@
     {
       "path": "pages/publish/form",
       "style": {
-        "navigationBarTitleText": "快速发车"
+        "navigationBarTitleText": "编辑招募"
+      }
+    },
+    {
+      "path": "pages/publish/result",
+      "style": {
+        "navigationBarTitleText": "发车成功"
       }
     },
     {
@@ -78,8 +90,8 @@
     "borderStyle": "black",
     "list": [
       {
-        "pagePath": "pages/home/index",
-        "text": "招募大厅"
+        "pagePath": "pages/publish/index",
+        "text": "发车"
       },
       {
         "pagePath": "pages/mine/index",

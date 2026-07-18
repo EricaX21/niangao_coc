@@ -2,9 +2,12 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
-import { getMyModules } from '@/api/module'
+import { getMyModules, deleteModule } from '@/api/module'
+import { useGameStore } from '@/store/game'
 import { fuzzySearch } from '@/utils/search'
 import { formatGameTime } from '@/utils/formatTime'
+
+const gameStore = useGameStore()
 
 const activeTab = ref('created')
 const searchKeyword = ref('')
@@ -161,11 +164,13 @@ const appStatusClass = (appStatus, moduleStatus) => {
 }
 
 // 卡片点击跳转严格区分角色
-// 草稿卡片直接进编辑表单，非草稿进详情页
+// 草稿卡片载回首页工作区继续编辑，非草稿进详情页
 const handleCardTap = (item) => {
   if (activeTab.value === 'created') {
     if (item.isDraft) {
-      uni.navigateTo({ url: `/pages/publish/form?id=${item._id}` })
+      // switchTab 不能带参数，草稿 id 经 store 传递给首页工作区
+      gameStore.setPendingDraftId(item._id)
+      uni.switchTab({ url: '/pages/publish/index' })
     } else {
       uni.navigateTo({ url: `/pages/mine/detail?id=${item._id}` })
     }
@@ -179,7 +184,28 @@ const handleCardTap = (item) => {
   }
 }
 
-const goCreate = () => uni.navigateTo({ url: '/pages/publish/form' })
+// 删除草稿：破坏性操作，二次确认后调云函数删除并刷新列表
+const handleDeleteDraft = (item) => {
+  uni.showModal({
+    title: '删除这条草稿？',
+    content: '删除后不可恢复',
+    confirmText: '删除',
+    success: async (res) => {
+      if (!res.confirm) return
+      uni.showLoading({ title: '删除中...', mask: true })
+      const result = await deleteModule(item._id)
+      uni.hideLoading()
+      if (result.success) {
+        uni.showToast({ title: '已删除', icon: 'none' })
+        loadList()
+      } else {
+        uni.showToast({ title: result.message || '删除失败', icon: 'none' })
+      }
+    }
+  })
+}
+
+const goCreate = () => uni.switchTab({ url: '/pages/publish/index' })
 </script>
 
 <template>
@@ -277,6 +303,12 @@ const goCreate = () => uni.navigateTo({ url: '/pages/publish/form' })
                 v-if="activeTab === 'created' && !item.isDraft && item.status === 'recruiting'"
                 class="applicant-count"
               >{{ item.applicantCount }}人申请</text>
+              <!-- 草稿：删除入口（tap.stop 避免触发卡片跳转） -->
+              <text
+                v-if="activeTab === 'created' && item.isDraft"
+                class="draft-delete"
+                @tap.stop="handleDeleteDraft(item)"
+              >删除</text>
               <!-- 我的申请：显示申请状态标签，发车后追加「· 已发车」 -->
               <view
                 v-if="activeTab === 'applied' && item._appStatus"
@@ -569,6 +601,13 @@ const goCreate = () => uni.navigateTo({ url: '/pages/publish/form' })
             font-size: 22rpx;
             color: #b2b2b2;
             flex-shrink: 0;
+          }
+
+          .draft-delete {
+            font-size: 22rpx;
+            color: #b2b2b2;
+            flex-shrink: 0;
+            padding: 8rpx 12rpx;
           }
 
           /* 我的申请 tab 状态标签（颜色规范来自 PRD 补充说明） */
